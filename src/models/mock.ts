@@ -13,14 +13,22 @@ function hasToolResult(request: ModelRequest, tool: string, predicate?: (output:
   });
 }
 
-function latestTestsPassed(request: ModelRequest): boolean {
+function latestToolPassed(request: ModelRequest, tool: string): boolean {
   const results = request.events
     .filter((event) => event.type === "tool_result")
     .map((event) => event.payload as { result?: { tool?: string; output?: unknown } })
-    .filter((payload) => payload.result?.tool === "repo.run_tests");
+    .filter((payload) => payload.result?.tool === tool);
 
   const latest = results.at(-1)?.result?.output as { passed?: boolean } | undefined;
   return latest?.passed === true;
+}
+
+function latestTestsPassed(request: ModelRequest): boolean {
+  return latestToolPassed(request, "repo.run_tests");
+}
+
+function latestTypecheckPassed(request: ModelRequest): boolean {
+  return latestToolPassed(request, "repo.run_typecheck");
 }
 
 export class MockModelAdapter implements ModelAdapter {
@@ -57,6 +65,25 @@ export class MockModelAdapter implements ModelAdapter {
     }
 
     if (latestTestsPassed(request)) {
+      if (
+        request.task.quality.requireTypecheckPassed &&
+        request.task.typecheckCommand &&
+        !latestTypecheckPassed(request)
+      ) {
+        return {
+          status: "continue",
+          summary: "Tests pass; now run the independent typecheck verifier before finalizing.",
+          next_action: {
+            type: "tool_call",
+            tool: "repo.run_typecheck",
+            args: { command: request.task.typecheckCommand }
+          },
+          confidence: 0.86,
+          risk: "low",
+          requires_human_approval: false
+        };
+      }
+
       return {
         status: "final",
         summary: "The configured test command now passes after the password validation fix.",

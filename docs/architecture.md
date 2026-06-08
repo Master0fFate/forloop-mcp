@@ -51,9 +51,9 @@ Task state is append-only. Each event is stored in SQLite as JSON payload with a
 
 ## Eval Layer
 
-Every executed tool result receives `loop_eval` and `quality_eval` events before the next model iteration. The eval layer turns tool output into structured feedback, scores step quality, and can stop the task when a proposed action violates a hard policy boundary such as escaping the workspace or running a command other than the configured test command.
+Every executed tool result receives `loop_eval` and `quality_eval` events before the next model iteration. The eval layer turns tool output into structured feedback, scores step quality, and can stop the task when a proposed action violates a hard policy boundary such as escaping the workspace or running a command other than the configured test or typecheck command.
 
-Final answers pass through a separate quality gate. By default, final completion requires a non-empty answer, confidence at or above `quality.minFinalConfidence`, prior tool evidence, and a passing configured test run.
+Final answers pass through a separate quality gate. By default, final completion requires a non-empty answer, prior tool evidence, and a passing configured test run. If `quality.requireTypecheckPassed` is enabled, the final gate also requires a passing configured typecheck run.
 
 ## Quality Loop
 
@@ -64,12 +64,15 @@ The task `quality` block defines the standard:
 ```yaml
 quality:
   minStepScore: 0.2
-  minFinalConfidence: 0.6
+  minFinalConfidence: 0
   requireEvidenceBeforeFinal: true
   requireTestsPassed: true
+  requireTypecheckPassed: false
 ```
 
 Rejected final answers produce `final_rejected` plus `quality_eval` events. Those events become part of the next model request, so quality feedback is fed back into the loop instead of living only in logs.
+
+The default verifier is deterministic: schemas, workspace policy, configured tests, and optional configured typecheck. Self-reported confidence is not proof; `minFinalConfidence` is only an optional policy threshold. If quality review is model-based, it must come from a separate verifier model or a subagent with a different system prompt, otherwise it is the same agent rubber-stamping itself.
 
 ## Edge-Case Resilience
 

@@ -31,7 +31,7 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   const skillLoader = new SkillLoader(options.skillsDir ?? defaultSkillsDir(process.cwd()));
   const model = options.model ?? createModelAdapter(task.model);
   const approvalManager = options.approvalManager ?? new PolicyApprovalManager();
-  const repoTools = new RepoTools(workspace, task.testCommand);
+  const repoTools = new RepoTools(workspace, task.testCommand, task.typecheckCommand);
   const registry = new RepoToolRegistry(repoTools);
   const evaluator = new DeterministicEvaluator();
 
@@ -112,7 +112,12 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       if (decision.status === "final") {
         const finalEval = evaluator.evaluateFinal(task, decision, store.list(taskId));
         store.append(taskId, "final_eval", { evaluation: finalEval });
-        store.append(taskId, "quality_eval", { phase: "final", evaluation: finalEval, criteria: task.quality });
+        store.append(taskId, "quality_eval", {
+          phase: "final",
+          verifier: deterministicVerifierMetadata(task),
+          evaluation: finalEval,
+          criteria: task.quality
+        });
         if (finalEval.pass) {
           store.append(taskId, "task_completed", { finalAnswer: decision.final_answer });
           return finish("completed", decision.final_answer);
@@ -156,7 +161,14 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
 
       const stepEval = evaluator.evaluateStep(task, decision, result, store.list(taskId));
       store.append(taskId, "loop_eval", { iteration, action, evaluation: stepEval });
-      store.append(taskId, "quality_eval", { phase: "step", iteration, action, evaluation: stepEval, criteria: task.quality });
+      store.append(taskId, "quality_eval", {
+        phase: "step",
+        iteration,
+        action,
+        verifier: deterministicVerifierMetadata(task),
+        evaluation: stepEval,
+        criteria: task.quality
+      });
       if (stepEval.gate === "stop") {
         store.append(taskId, "task_failed", { reason: stepEval.feedback, action });
         return finish("failed");
@@ -228,4 +240,15 @@ function isInside(base: string, target: string): boolean {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function deterministicVerifierMetadata(task: TaskInput): { kind: "deterministic"; checks: string[] } {
+  const checks = ["tool_schema", "workspace_policy"];
+  if (task.quality.requireTestsPassed) {
+    checks.push("configured_tests");
+  }
+  if (task.quality.requireTypecheckPassed) {
+    checks.push("configured_typecheck");
+  }
+  return { kind: "deterministic", checks };
 }

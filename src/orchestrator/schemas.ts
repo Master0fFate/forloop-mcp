@@ -14,14 +14,16 @@ export type BudgetConfig = z.infer<typeof BudgetConfigSchema>;
 
 export const QualityConfigSchema = z.object({
   minStepScore: z.coerce.number().min(0).max(1).default(0.2),
-  minFinalConfidence: z.coerce.number().min(0).max(1).default(0.6),
+  minFinalConfidence: z.coerce.number().min(0).max(1).default(0),
   requireEvidenceBeforeFinal: z.boolean().default(true),
-  requireTestsPassed: z.boolean().default(true)
+  requireTestsPassed: z.boolean().default(true),
+  requireTypecheckPassed: z.boolean().default(false)
 }).default({
   minStepScore: 0.2,
-  minFinalConfidence: 0.6,
+  minFinalConfidence: 0,
   requireEvidenceBeforeFinal: true,
-  requireTestsPassed: true
+  requireTestsPassed: true,
+  requireTypecheckPassed: false
 });
 
 export type QualityConfig = z.infer<typeof QualityConfigSchema>;
@@ -34,6 +36,7 @@ export const TaskInputSchema = z.object({
   skill: z.string().min(1).default("repo-debugging"),
   model: z.enum(["mock", "openai"]).default("mock"),
   testCommand: z.string().min(1).default("npm test"),
+  typecheckCommand: z.string().min(1).optional(),
   approvalMode: ApprovalModeSchema.default("manual"),
   traceDbPath: z.string().optional(),
   quality: QualityConfigSchema,

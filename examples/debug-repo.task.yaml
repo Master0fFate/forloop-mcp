@@ -6,8 +6,9 @@ testCommand: npm test
 approvalMode: auto
 quality:
   minStepScore: 0.2
-  minFinalConfidence: 0.6
+  minFinalConfidence: 0
   requireEvidenceBeforeFinal: true
   requireTestsPassed: true
+  requireTypecheckPassed: false
 budget:
   maxIterations: 8

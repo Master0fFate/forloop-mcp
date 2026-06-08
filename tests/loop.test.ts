@@ -245,6 +245,7 @@ describe("agent loop", () => {
           model: "mock",
           testCommand: "npm test",
           approvalMode: "auto",
+          quality: { minFinalConfidence: 0.6 },
           budget: { maxIterations: 3 }
         },
         { model: lowConfidenceModel }
@@ -253,6 +254,100 @@ describe("agent loop", () => {
       expect(result.status).toBe("budget_exceeded");
       expect(result.events.map((event) => event.type)).toContain("final_rejected");
       expect(JSON.stringify(result.events)).toContain("confidence 0.1 is below 0.6");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("quality loop can require an independent typecheck verifier", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    try {
+      const result = await runAgentLoop({
+        goal: "Fix failing password validation tests",
+        workspace,
+        skill: "repo-debugging",
+        model: "mock",
+        testCommand: "npm test",
+        typecheckCommand: "npm test",
+        approvalMode: "auto",
+        quality: { requireTypecheckPassed: true },
+        budget: { maxIterations: 10 }
+      });
+
+      expect(result.status).toBe("completed");
+      expect(JSON.stringify(result.events)).toContain("repo.run_typecheck");
+      expect(JSON.stringify(result.events)).toContain("configured_typecheck");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("quality loop rejects finals when required typecheck evidence is missing", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const finalAfterTestsModel: ModelAdapter = {
+      provider: "test",
+      model: "skips-typecheck",
+      async generate(request) {
+        const hasRunTests = request.events.some((event) => {
+          const payload = event.payload as { result?: { tool?: string } };
+          return event.type === "tool_result" && payload.result?.tool === "repo.run_tests";
+        });
+
+        if (!hasRunTests) {
+          return {
+            provider: "test",
+            model: "skips-typecheck",
+            raw: {
+              status: "continue",
+              summary: "Gather test evidence first.",
+              next_action: {
+                type: "tool_call",
+                tool: "repo.run_tests",
+                args: { command: request.task.testCommand }
+              },
+              confidence: 0.8,
+              risk: "low",
+              requires_human_approval: false
+            }
+          };
+        }
+
+        return {
+          provider: "test",
+          model: "skips-typecheck",
+          raw: {
+            status: "final",
+            summary: "Try to skip the configured typecheck verifier.",
+            final_answer: "Done.",
+            confidence: 0.9,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Require typecheck verifier",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "node -e \"process.exit(0)\"",
+          typecheckCommand: "node -e \"process.exit(0)\"",
+          approvalMode: "auto",
+          quality: { requireTypecheckPassed: true },
+          budget: { maxIterations: 3 }
+        },
+        { model: finalAfterTestsModel }
+      );
+
+      expect(result.status).toBe("budget_exceeded");
+      expect(result.events.map((event) => event.type)).toContain("final_rejected");
+      expect(JSON.stringify(result.events)).toContain("no configured typecheck run was recorded");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

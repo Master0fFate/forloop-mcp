@@ -93,6 +93,8 @@ Windows fallback, for harnesses that do not resolve `npx` directly:
 
 Add `--allow-mutations` only for trusted harnesses where you want direct MCP patching enabled.
 
+Add `--typecheck-command "npm run typecheck"` when you want the MCP server to expose a second deterministic verifier through `repo.run_typecheck`. The tool can only run that configured command.
+
 This package is built for local stdio MCP hosts. Remote ChatGPT/OpenAI connector surfaces require remote HTTP MCP servers, so use an HTTP bridge or deploy a remote wrapper if you need that environment.
 
 If npm is unavailable or you want the latest `main` branch, install from GitHub:
@@ -148,6 +150,12 @@ Start the MCP repo server:
 npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test"
 ```
 
+Start the MCP repo server with an optional typecheck verifier:
+
+```bash
+npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test" --typecheck-command "npm test"
+```
+
 Direct MCP file edits are denied by default. Enable them only for trusted clients:
 
 ```bash
@@ -168,10 +176,10 @@ npm run dev -- export-trace --trace-db examples/buggy-auth-service/.forloop/stat
 
 ## Real Repositories
 
-Use an explicit test command:
+Use explicit verifier commands:
 
 ```bash
-npm run dev -- run --workspace C:\path\to\repo --goal "Fix failing tests" --test-command "npm test"
+npm run dev -- run --workspace C:\path\to\repo --goal "Fix failing tests" --test-command "npm test" --typecheck-command "npm run typecheck"
 ```
 
-The runtime will not execute arbitrary shell commands. `repo.run_tests` is restricted to the configured command.
+The runtime will not execute arbitrary shell commands. `repo.run_tests` and `repo.run_typecheck` are restricted to their configured commands.

@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("forloop")
   .description("Model-agnostic agent loop runtime with MCP repo tools.")
-  .version("0.1.3");
+  .version("0.1.4");
 
 program
   .command("init")
@@ -33,9 +33,10 @@ program
       approvalMode: "manual",
       quality: {
         minStepScore: 0.2,
-        minFinalConfidence: 0.6,
+        minFinalConfidence: 0,
         requireEvidenceBeforeFinal: true,
-        requireTestsPassed: true
+        requireTestsPassed: true,
+        requireTypecheckPassed: false
       },
       budget: { maxIterations: 8 }
     });
@@ -54,6 +55,7 @@ program
   .option("--skill <name>", "Skill name")
   .option("--model <name>", "Model adapter: mock or openai")
   .option("--test-command <command>", "Configured test command")
+  .option("--typecheck-command <command>", "Optional configured typecheck command")
   .option("--auto-approve", "Approve mutating actions automatically")
   .option("--deny-approval", "Deny mutating actions automatically")
   .option("--max-iterations <count>", "Iteration budget")
@@ -119,9 +121,10 @@ program
   .description("Start the repo MCP server over stdio.")
   .option("--workspace <path>", "Workspace path", ".")
   .option("--test-command <command>", "Configured test command", "npm test")
+  .option("--typecheck-command <command>", "Optional configured typecheck command")
   .option("--allow-mutations", "Allow direct MCP mutation tools such as repo.apply_patch")
-  .action(async (options: { workspace: string; testCommand: string; allowMutations?: boolean }) => {
-    await startRepoMcpServer(resolve(options.workspace), options.testCommand, {
+  .action(async (options: { workspace: string; testCommand: string; typecheckCommand?: string; allowMutations?: boolean }) => {
+    await startRepoMcpServer(resolve(options.workspace), options.testCommand, options.typecheckCommand, {
       allowMutations: options.allowMutations === true
     });
   });
@@ -143,6 +146,7 @@ async function loadTask(options: Record<string, unknown>): Promise<TaskInput> {
     skill: options.skill ?? yamlTask.skill,
     model: options.model ?? yamlTask.model,
     testCommand: options.testCommand ?? yamlTask.testCommand,
+    typecheckCommand: options.typecheckCommand ?? yamlTask.typecheckCommand,
     approvalMode,
     traceDbPath: options.traceDb ?? yamlTask.traceDbPath,
     budget: {

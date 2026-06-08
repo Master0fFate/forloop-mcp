@@ -53,6 +53,25 @@ export class DeterministicEvaluator {
       });
     }
 
+    if (result.tool === "repo.run_typecheck") {
+      const output = result.output as { passed?: boolean } | undefined;
+      if (output?.passed === true) {
+        return withQualityFloor({
+          pass: true,
+          score: 1,
+          gate: "continue",
+          feedback: "Configured typecheck passed. The loop has independent type-error evidence."
+        });
+      }
+
+      return withQualityFloor({
+        pass: false,
+        score: 0.4,
+        gate: "continue",
+        feedback: "Configured typecheck did not pass yet. Fix type errors before finalizing."
+      });
+    }
+
     if (result.tool === "repo.apply_patch") {
       return withQualityFloor({
         pass: true,
@@ -71,11 +90,8 @@ export class DeterministicEvaluator {
   }
 
   evaluateFinal(task: TaskInput, decision: AgentDecision, events: TaskEvent[]): EvaluationResult {
-    const latestTestOutput = events
-      .filter((event) => event.type === "tool_result")
-      .map((event) => event.payload as { result?: { tool?: string; output?: unknown } })
-      .filter((payload) => payload.result?.tool === "repo.run_tests")
-      .at(-1)?.result?.output as { passed?: boolean } | undefined;
+    const latestTestOutput = latestToolOutput(events, "repo.run_tests");
+    const latestTypecheckOutput = latestToolOutput(events, "repo.run_typecheck");
 
     if (!decision.final_answer?.trim()) {
       return {
@@ -122,10 +138,44 @@ export class DeterministicEvaluator {
       }
     }
 
+    if (task.quality.requireTypecheckPassed) {
+      if (!task.typecheckCommand) {
+        return {
+          pass: false,
+          score: 0.2,
+          feedback: "Final answer rejected because typecheck verification is required but no typecheck command is configured."
+        };
+      }
+
+      if (!latestTypecheckOutput) {
+        return {
+          pass: false,
+          score: 0.2,
+          feedback: "Final answer rejected because no configured typecheck run was recorded."
+        };
+      }
+
+      if (latestTypecheckOutput.passed !== true) {
+        return {
+          pass: false,
+          score: 0.3,
+          feedback: "Final answer rejected because the latest configured typecheck run did not pass."
+        };
+      }
+    }
+
     return {
       pass: true,
       score: 1,
       feedback: "Final answer accepted by deterministic quality evaluator."
     };
   }
+}
+
+function latestToolOutput(events: TaskEvent[], tool: string): { passed?: boolean } | undefined {
+  return events
+    .filter((event) => event.type === "tool_result")
+    .map((event) => event.payload as { result?: { tool?: string; output?: unknown } })
+    .filter((payload) => payload.result?.tool === tool)
+    .at(-1)?.result?.output as { passed?: boolean } | undefined;
 }

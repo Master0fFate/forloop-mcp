@@ -14,12 +14,15 @@ export interface RepoMcpServerOptions {
 export async function startRepoMcpServer(
   workspace = process.cwd(),
   testCommand = "npm test",
+  typecheckCommandOrOptions?: string | RepoMcpServerOptions,
   options: RepoMcpServerOptions = {}
 ): Promise<void> {
-  const repoTools = new RepoTools(workspace, testCommand);
+  const typecheckCommand = typeof typecheckCommandOrOptions === "string" ? typecheckCommandOrOptions : undefined;
+  const resolvedOptions = typeof typecheckCommandOrOptions === "object" ? typecheckCommandOrOptions : options;
+  const repoTools = new RepoTools(workspace, testCommand, typecheckCommand);
   const server = new McpServer({
     name: "forloop-repo-tools",
-    version: "0.1.3"
+    version: "0.1.4"
   });
 
   server.registerTool(
@@ -68,7 +71,7 @@ export async function startRepoMcpServer(
       }
     },
     async (args) => {
-      if (!options.allowMutations) {
+      if (!resolvedOptions.allowMutations) {
         return asMcpResult(deniedMutation("repo.apply_patch"));
       }
       return asMcpResult(await repoTools.applyPatch(args));
@@ -83,6 +86,16 @@ export async function startRepoMcpServer(
       inputSchema: { command: z.string().optional() }
     },
     async (args) => asMcpResult(await repoTools.runTests(args))
+  );
+
+  server.registerTool(
+    "repo.run_typecheck",
+    {
+      title: "Run typecheck",
+      description: "Run only the configured typecheck command, when one is configured.",
+      inputSchema: { command: z.string().optional() }
+    },
+    async (args) => asMcpResult(await repoTools.runTypecheck(args))
   );
 
   server.registerTool(
@@ -115,12 +128,19 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     process.exit(0);
   }
 
-  await startRepoMcpServer(readArg("workspace", process.cwd()), readArg("test-command", "npm test"), {
-    allowMutations: hasFlag("allow-mutations")
-  });
+  await startRepoMcpServer(
+    readArg("workspace", process.cwd()),
+    readArg("test-command", "npm test"),
+    readArg("typecheck-command"),
+    {
+      allowMutations: hasFlag("allow-mutations")
+    }
+  );
 }
 
-function readArg(name: string, fallback: string): string {
+function readArg(name: string, fallback: string): string;
+function readArg(name: string): string | undefined;
+function readArg(name: string, fallback?: string): string | undefined {
   const flag = `--${name}`;
   for (let index = 2; index < process.argv.length; index += 1) {
     const arg = process.argv[index];
@@ -159,6 +179,8 @@ Examples:
 Options:
   --workspace <path>       Repository workspace the MCP tools may access.
   --test-command <command> Test command allowed through repo.run_tests.
+  --typecheck-command <command>
+                           Optional command allowed through repo.run_typecheck.
   --allow-mutations        Enable direct MCP repo.apply_patch calls.
   --help, -h               Show this help text.
 `);

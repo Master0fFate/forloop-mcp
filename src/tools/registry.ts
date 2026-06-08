@@ -50,6 +50,12 @@ export class RepoToolRegistry {
       mutates: false
     },
     {
+      name: "repo.run_typecheck",
+      description: "Run the configured typecheck command only, when one is configured.",
+      inputSchema: z.object({ command: z.string().optional() }),
+      mutates: false
+    },
+    {
       name: "repo.git_diff",
       description: "Return git diff for the workspace when it is a git repository.",
       inputSchema: z.object({}),
@@ -98,6 +104,8 @@ export class RepoToolRegistry {
           return await this.repoTools.applyPatch(parsed.data);
         case "repo.run_tests":
           return await this.repoTools.runTests(parsed.data as { command?: string });
+        case "repo.run_typecheck":
+          return await this.repoTools.runTypecheck(parsed.data as { command?: string });
         case "repo.git_diff":
           return await this.repoTools.gitDiff();
         default:

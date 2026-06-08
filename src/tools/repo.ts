@@ -35,7 +35,11 @@ const ApplyPatchArgsSchema = z.object({
 export class RepoTools {
   readonly workspace: string;
 
-  constructor(workspace: string, private readonly testCommand: string) {
+  constructor(
+    workspace: string,
+    private readonly testCommand: string,
+    private readonly typecheckCommand?: string
+  ) {
     this.workspace = resolve(workspace);
   }
 
@@ -124,6 +128,26 @@ export class RepoTools {
 
     const result = await this.runCommand(command);
     return this.ok("repo.run_tests", {
+      command,
+      passed: result.exitCode === 0,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr
+    });
+  }
+
+  async runTypecheck(args: { command?: string } = {}): Promise<ToolResult> {
+    if (!this.typecheckCommand) {
+      return this.fail("repo.run_typecheck", "No typecheck command is configured for this task.");
+    }
+
+    const command = args.command ?? this.typecheckCommand;
+    if (command !== this.typecheckCommand) {
+      return this.fail("repo.run_typecheck", `Only the configured typecheck command is allowed: ${this.typecheckCommand}`);
+    }
+
+    const result = await this.runCommand(command);
+    return this.ok("repo.run_typecheck", {
       command,
       passed: result.exitCode === 0,
       exitCode: result.exitCode,

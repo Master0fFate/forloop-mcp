@@ -30,6 +30,7 @@ describe("repo MCP server", () => {
       await client.connect(transport);
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name)).toContain("repo.read_file");
+      expect(listed.tools.map((tool) => tool.name)).toContain("repo.run_typecheck");
 
       const result = await client.callTool({
         name: "repo.list_files",

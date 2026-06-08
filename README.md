@@ -6,7 +6,7 @@
 
 ForLoop MCP is an implementation of that shift: a local MCP server and loop runtime that lets an AI harness move from one-shot prompting to controlled execution.
 
-Point your harness at a repository, give it a test command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, quality evals, and a deterministic runtime that can drive a task until tests pass or the budget runs out.
+Point your harness at a repository, give it a test command, optionally add a typecheck command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, quality evals, and a deterministic runtime that can drive a task until verifier checks pass or the budget runs out.
 
 It separates the system into three explicit layers:
 
@@ -117,6 +117,12 @@ Windows fallback, for harnesses that do not resolve `npx` directly:
 
 Direct MCP file edits are disabled by default. For trusted harnesses that already show tool approvals, add `--allow-mutations` to the `args` array.
 
+For a second deterministic verifier, add a configured typecheck command:
+
+```json
+"args": ["-y", "forloop-mcp@latest", "--workspace", "/absolute/path/to/repo", "--test-command", "npm test", "--typecheck-command", "npm run typecheck"]
+```
+
 This package is built for local stdio MCP hosts. Remote ChatGPT/OpenAI connector surfaces require remote HTTP MCP servers, so use an HTTP bridge or deploy a remote wrapper if you need that environment.
 
 If npm is unavailable or you want the latest `main` branch, use GitHub as the package source:
@@ -171,10 +177,10 @@ npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test"
 ```bash
 npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
 forloop init --workspace ./my-repo
-forloop run --workspace ./my-repo --goal "Fix failing tests" --test-command "npm test"
+forloop run --workspace ./my-repo --goal "Fix failing tests" --test-command "npm test" --typecheck-command "npm run typecheck"
 forloop inspect --trace-db ./my-repo/.forloop/state.sqlite
 forloop export-trace --trace-db ./my-repo/.forloop/state.sqlite --out trace.json
-forloop mcp-repo --workspace ./my-repo --test-command "npm test"
+forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-command "npm run typecheck"
 ```
 
 ## Safety Defaults
@@ -183,9 +189,11 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test"
 - `repo.apply_patch` requires approval.
 - Direct MCP `repo.apply_patch` calls are denied unless the server is started with `--allow-mutations`.
 - `repo.run_tests` can only run the configured test command.
+- `repo.run_typecheck` can only run the configured typecheck command, when one is configured.
 - File paths are sandboxed to the selected workspace.
 - Every tool result is scored by a loop eval gate before the next iteration.
-- Final answers are rejected by default unless the loop gathered tool evidence, met minimum confidence, and recorded a passing configured test run.
+- Final answers are rejected by default unless the loop gathered tool evidence and recorded a passing configured test run.
+- If `quality.requireTypecheckPassed` is enabled, final answers also require a passing configured typecheck run.
 - Every model response, tool call, tool result, approval, and evaluator result is persisted.
 - Missing workspaces, missing skills, model failures, repeated actions, invalid model output, denied approvals, and budget exhaustion resolve to explicit task states instead of silent crashes.
 
@@ -198,12 +206,15 @@ ForLoop makes that second loop explicit through the task `quality` block:
 ```yaml
 quality:
   minStepScore: 0.2
-  minFinalConfidence: 0.6
+  minFinalConfidence: 0
   requireEvidenceBeforeFinal: true
   requireTestsPassed: true
+  requireTypecheckPassed: false
 ```
 
 Each tool result emits `quality_eval` feedback for the next iteration. Final answers that do not clear the quality gate are rejected and fed back into the loop instead of being shipped as weak completion claims.
+
+By default, the verifier is deterministic: registered tool schemas, workspace policy, configured tests, and optional configured typecheck. `minFinalConfidence` exists only as an extra policy knob; it is not treated as proof because it comes from the agent that produced the answer. Model-based quality review should use a separate verifier model or subagent with a different system prompt.
 
 ## Current Scope
 
