@@ -1,0 +1,163 @@
+import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { parseAgentDecision } from "./decision.js";
+import { DeterministicEvaluator } from "./evaluator.js";
+import { PolicyApprovalManager, type ApprovalManager } from "./approval.js";
+import { TaskInputSchema, type TaskEvent, type TaskInput, type TaskResult } from "./schemas.js";
+import type { ModelAdapter } from "../models/base.js";
+import { createModelAdapter } from "../models/router.js";
+import { defaultSkillsDir, SkillLoader } from "../skills/loader.js";
+import { SQLiteStateStore } from "../storage/sqlite.js";
+import { RepoTools } from "../tools/repo.js";
+import { RepoToolRegistry } from "../tools/registry.js";
+
+export interface RunAgentLoopOptions {
+  model?: ModelAdapter;
+  approvalManager?: ApprovalManager;
+  skillsDir?: string;
+  stateStore?: SQLiteStateStore;
+}
+
+export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions = {}): Promise<TaskResult> {
+  const task = TaskInputSchema.parse(input);
+  const workspace = resolve(task.workspace);
+  const traceDbPath = resolve(task.traceDbPath ?? join(workspace, ".forloop", "state.sqlite"));
+  const taskId = randomUUID();
+  const store = options.stateStore ?? (await SQLiteStateStore.open(traceDbPath));
+  const shouldCloseStore = !options.stateStore;
+  const skillLoader = new SkillLoader(options.skillsDir ?? defaultSkillsDir(process.cwd()));
+  const model = options.model ?? createModelAdapter(task.model);
+  const approvalManager = options.approvalManager ?? new PolicyApprovalManager();
+  const repoTools = new RepoTools(workspace, task.testCommand);
+  const registry = new RepoToolRegistry(repoTools);
+  const evaluator = new DeterministicEvaluator();
+
+  try {
+    store.append(taskId, "task_created", { task: { ...task, workspace } });
+
+    if (!existsSync(workspace)) {
+      store.append(taskId, "task_failed", { reason: `Workspace does not exist: ${workspace}` });
+      return finish("failed");
+    }
+
+    const skill = await skillLoader.load(task.skill);
+    store.append(taskId, "skill_loaded", { name: skill.name, path: skill.path });
+    store.append(taskId, "model_selected", { provider: model.provider, model: model.model });
+    store.append(taskId, "tools_loaded", { tools: registry.describe().map((tool) => tool.name) });
+
+    let invalidDecisionCount = 0;
+    const actionCounts = new Map<string, number>();
+
+    for (let iteration = 1; iteration <= task.budget.maxIterations; iteration += 1) {
+      const events = store.list(taskId);
+      store.append(taskId, "iteration_started", { iteration });
+
+      const response = await model.generate({
+        task,
+        skill,
+        tools: registry.describe(),
+        events,
+        stateSummary: summarizeEvents(events)
+      });
+      store.append(taskId, "model_response", {
+        provider: response.provider,
+        model: response.model,
+        raw: response.raw
+      });
+
+      const parsed = parseAgentDecision(response.raw);
+      if (!parsed.ok) {
+        invalidDecisionCount += 1;
+        store.append(taskId, "invalid_model_output", { error: parsed.error, invalidDecisionCount });
+        if (invalidDecisionCount > task.budget.maxInvalidDecisions) {
+          store.append(taskId, "task_failed", { reason: "Too many invalid model decisions." });
+          return finish("failed");
+        }
+        continue;
+      }
+
+      invalidDecisionCount = 0;
+      const decision = parsed.decision;
+      store.append(taskId, "decision_parsed", { decision });
+
+      if (decision.status === "failed") {
+        store.append(taskId, "task_failed", { reason: decision.summary });
+        return finish("failed");
+      }
+
+      if (decision.status === "needs_human" && !decision.next_action) {
+        store.append(taskId, "task_failed", { reason: "Model requested human input without a supported action." });
+        return finish("failed");
+      }
+
+      if (decision.status === "final") {
+        const finalEval = evaluator.evaluateFinal(decision, store.list(taskId));
+        store.append(taskId, "final_eval", { evaluation: finalEval });
+        if (finalEval.pass) {
+          store.append(taskId, "task_completed", { finalAnswer: decision.final_answer });
+          return finish("completed", decision.final_answer);
+        }
+        store.append(taskId, "final_rejected", { feedback: finalEval.feedback });
+        continue;
+      }
+
+      const action = decision.next_action;
+      if (!action) {
+        store.append(taskId, "task_failed", { reason: "Decision had no executable action." });
+        return finish("failed");
+      }
+
+      if (!registry.has(action.tool)) {
+        store.append(taskId, "tool_denied", { action, reason: "Tool is not registered." });
+        continue;
+      }
+
+      const actionKey = `${action.tool}:${JSON.stringify(action.args)}`;
+      const actionCount = (actionCounts.get(actionKey) ?? 0) + 1;
+      actionCounts.set(actionKey, actionCount);
+      if (actionCount > task.budget.maxRepeatedActions) {
+        store.append(taskId, "task_failed", { reason: "Repeated action limit exceeded.", action });
+        return finish("failed");
+      }
+
+      if (decision.requires_human_approval || registry.requiresApproval(action.tool)) {
+        store.append(taskId, "approval_requested", { decision });
+        const approval = await approvalManager.request(decision, task);
+        store.append(taskId, "approval_result", { approval });
+        if (!approval.approved) {
+          store.append(taskId, "task_stopped_by_human", { reason: approval.reason });
+          return finish("stopped_by_human");
+        }
+      }
+
+      store.append(taskId, "tool_call", { action });
+      const result = await registry.call(action);
+      store.append(taskId, "tool_result", { result });
+    }
+
+    store.append(taskId, "budget_exceeded", { maxIterations: task.budget.maxIterations });
+    return finish("budget_exceeded");
+  } finally {
+    if (shouldCloseStore) {
+      store.close();
+    }
+  }
+
+  function finish(status: TaskResult["status"], finalAnswer?: string): TaskResult {
+    return {
+      taskId,
+      status,
+      finalAnswer,
+      events: store.list(taskId),
+      traceDbPath
+    };
+  }
+}
+
+function summarizeEvents(events: TaskEvent[]): string {
+  return events
+    .slice(-10)
+    .map((event) => `${event.type}: ${JSON.stringify(event.payload).slice(0, 500)}`)
+    .join("\n");
+}

@@ -1,0 +1,8 @@
+goal: Fix the failing password validation tests
+workspace: examples/buggy-auth-service
+skill: repo-debugging
+model: mock
+testCommand: npm test
+approvalMode: auto
+budget:
+  maxIterations: 8

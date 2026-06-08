@@ -1,0 +1,88 @@
+{
+  "name": "forloop-mcp",
+  "version": "0.1.0",
+  "description": "Model-agnostic agent loop runtime with MCP repo tools, structured decisions, approvals, evals, and traceable state.",
+  "type": "module",
+  "author": "Master0fFate",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Master0fFate/forloop-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Master0fFate/forloop-mcp/issues"
+  },
+  "homepage": "https://github.com/Master0fFate/forloop-mcp#readme",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./mcp/repo-server": {
+      "types": "./dist/src/mcp/repo-server.d.ts",
+      "import": "./dist/src/mcp/repo-server.js"
+    },
+    "./models/mock": {
+      "types": "./dist/src/models/mock.d.ts",
+      "import": "./dist/src/models/mock.js"
+    },
+    "./orchestrator/loop": {
+      "types": "./dist/src/orchestrator/loop.d.ts",
+      "import": "./dist/src/orchestrator/loop.js"
+    },
+    "./orchestrator/schemas": {
+      "types": "./dist/src/orchestrator/schemas.d.ts",
+      "import": "./dist/src/orchestrator/schemas.js"
+    }
+  },
+  "bin": {
+    "forloop": "dist/src/cli/main.js",
+    "forloop-mcp": "dist/src/mcp/repo-server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "smoke": "tsx scripts/smoke.ts",
+    "check": "npm run build && npm test && npm run smoke",
+    "prepare": "npm run build",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check",
+    "dev": "tsx src/cli/main.ts",
+    "mcp": "tsx src/mcp/repo-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^15.0.0",
+    "sql.js": "^1.14.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/sql.js": "^1.4.11",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent-loop",
+    "ai-agents",
+    "orchestrator",
+    "cli",
+    "typescript"
+  ],
+  "files": [
+    "dist/src",
+    "skills",
+    "docs",
+    "examples",
+    "README.md"
+  ],
+  "license": "MIT"
+}
