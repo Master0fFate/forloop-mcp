@@ -20,7 +20,7 @@ Governance = stop, escalate, recover, and abandon decisions
 Orchestrator = control flow, state, retries, approvals, and traceability
 ```
 
-This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, quality gates, governance gates, final evals, traces, and a demo repo.
+This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, explicit criteria, security gates, quality gates, governance gates, final evals, traces, and a demo repo.
 
 ## Quick Start
 
@@ -311,7 +311,7 @@ Implemented now:
 - SQLite trace store
 - Repo tool registry
 - MCP stdio server exposing repo tools
-- Deterministic loop, quality, governance, and final evaluator
+- Deterministic loop, criteria, security, quality, governance, and final evaluator
 - Demo fixture
 - Unit, integration, and smoke tests
 
