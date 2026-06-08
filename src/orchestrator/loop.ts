@@ -61,10 +61,19 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
     store.append(taskId, "tools_loaded", { tools: registry.describe().map((tool) => tool.name) });
 
     let invalidDecisionCount = 0;
+    let emptyRoundCount = 0;
+    let approxTokens = 0;
     const actionCounts = new Map<string, number>();
 
     for (let iteration = 1; iteration <= task.budget.maxIterations; iteration += 1) {
       const events = store.list(taskId);
+      if (task.budget.maxApproxTokens && approxTokens >= task.budget.maxApproxTokens) {
+        const tokenGovernance = governance.assessTokenBudget(task, events, approxTokens);
+        store.append(taskId, "governance_decision", { phase: "budget", decision: tokenGovernance });
+        store.append(taskId, "task_abandoned", { reason: tokenGovernance.reason });
+        return finish("abandoned");
+      }
+
       store.append(taskId, "iteration_started", { iteration });
 
       let response: ModelResponse;
@@ -87,6 +96,18 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
         model: response.model,
         raw: response.raw
       });
+      approxTokens += approximateTokens(response.raw);
+      store.append(taskId, "budget_eval", {
+        iteration,
+        approxTokens,
+        maxApproxTokens: task.budget.maxApproxTokens
+      });
+      if (task.budget.maxApproxTokens && approxTokens >= task.budget.maxApproxTokens) {
+        const tokenGovernance = governance.assessTokenBudget(task, store.list(taskId), approxTokens);
+        store.append(taskId, "governance_decision", { phase: "budget", decision: tokenGovernance });
+        store.append(taskId, "task_abandoned", { reason: tokenGovernance.reason });
+        return finish("abandoned");
+      }
 
       const parsed = parseAgentDecision(response.raw);
       if (!parsed.ok) {
@@ -133,6 +154,14 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
           return finish("completed", decision.final_answer);
         }
         store.append(taskId, "final_rejected", { feedback: finalEval.feedback });
+        emptyRoundCount += 1;
+        store.append(taskId, "empty_round", { reason: "Final answer failed evaluation criteria.", emptyRoundCount });
+        if (emptyRoundCount > task.budget.maxEmptyRounds) {
+          const emptyGovernance = governance.assessEmptyRounds(task, store.list(taskId));
+          store.append(taskId, "governance_decision", { phase: "empty_round", decision: emptyGovernance });
+          store.append(taskId, "task_abandoned", { reason: emptyGovernance.reason });
+          return finish("abandoned");
+        }
         const finalGovernance = governance.assessFinalRejection(task, finalEval, store.list(taskId));
         store.append(taskId, "governance_decision", { phase: "final", decision: finalGovernance });
         if (finalGovernance.action === "abandon") {
@@ -183,6 +212,18 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       store.append(taskId, "tool_call", { action });
       const result = await registry.call(action);
       store.append(taskId, "tool_result", { result });
+      if (result.ok) {
+        emptyRoundCount = 0;
+      } else {
+        emptyRoundCount += 1;
+        store.append(taskId, "empty_round", { reason: result.error ?? "Tool failed.", emptyRoundCount });
+        if (emptyRoundCount > task.budget.maxEmptyRounds) {
+          const emptyGovernance = governance.assessEmptyRounds(task, store.list(taskId));
+          store.append(taskId, "governance_decision", { phase: "empty_round", decision: emptyGovernance });
+          store.append(taskId, "task_abandoned", { reason: emptyGovernance.reason, action });
+          return finish("abandoned");
+        }
+      }
       const resultSecurityDecision = security.assessToolResult(result);
       if (resultSecurityDecision) {
         store.append(taskId, "security_eval", { phase: "tool_result", action, decision: resultSecurityDecision });
@@ -286,6 +327,10 @@ function isInside(base: string, target: string): boolean {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function approximateTokens(value: unknown): number {
+  return Math.ceil(JSON.stringify(value).length / 4);
 }
 
 function deterministicVerifierMetadata(task: TaskInput): { kind: "deterministic"; checks: string[] } {

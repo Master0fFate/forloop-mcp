@@ -146,6 +146,30 @@ export class DeterministicGovernance {
       }
     };
   }
+
+  assessEmptyRounds(task: TaskInput, events: TaskEvent[]): GovernanceDecisionResult {
+    return {
+      action: "abandon",
+      reason: "Mission abandoned because empty rounds exceeded governance limits.",
+      metrics: {
+        ...baseMetrics(events),
+        emptyRounds: countEvents(events, "empty_round"),
+        maxEmptyRounds: task.budget.maxEmptyRounds
+      }
+    };
+  }
+
+  assessTokenBudget(task: TaskInput, events: TaskEvent[], approxTokens: number): GovernanceDecisionResult {
+    return {
+      action: "abandon",
+      reason: "Mission abandoned because the approximate token budget was exhausted.",
+      metrics: {
+        ...baseMetrics(events),
+        approxTokens,
+        maxApproxTokens: task.budget.maxApproxTokens
+      }
+    };
+  }
 }
 
 function baseMetrics(events: TaskEvent[]): Record<string, unknown> {

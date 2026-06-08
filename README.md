@@ -286,9 +286,19 @@ governance:
   maxRecoveryAttempts: 3
   maxFinalRejections: 2
   maxConsecutiveFailedSteps: 3
+budget:
+  maxIterations: 8
+  maxEmptyRounds: 2
+  maxApproxTokens: 12000
 ```
 
-Governance emits `governance_decision` events with one of five actions: `continue`, `recover`, `escalate`, `stop`, or `abandon`. `abandon` is a first-class task outcome for missions that repeatedly fail quality gates or consume their recovery budget.
+Governance emits `governance_decision` events with one of five actions: `continue`, `recover`, `escalate`, `stop`, or `abandon`. `abandon` is a first-class task outcome for missions that repeatedly fail quality gates, produce too many empty rounds, exhaust recovery attempts, or hit the approximate token ceiling.
+
+## Exit Conditions
+
+The loop never ships because the agent says “looks done.” Completion is anchored to external criteria: verifier evidence, required evaluation criteria, budget limits, and governance policy.
+
+Concrete exits include passing required criteria, human stop, denied security action, repeated rejected finals, `maxEmptyRounds`, `maxIterations`, and optional `maxApproxTokens`. Closed loops get ROI because the path and the spend ceiling are both explicit.
 
 ## Current Scope
 

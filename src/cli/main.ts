@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("forloop")
   .description("Model-agnostic agent loop runtime with MCP repo tools.")
-  .version("0.1.7");
+  .version("0.1.8");
 
 program
   .command("init")
@@ -71,7 +71,13 @@ program
           required: true
         }
       ],
-      budget: { maxIterations: 8 }
+      budget: {
+        maxIterations: 8,
+        maxInvalidDecisions: 2,
+        maxRepeatedActions: 3,
+        maxEmptyRounds: 2,
+        maxApproxTokens: 12000
+      }
     });
 
     await mkdir(dirname(out), { recursive: true });

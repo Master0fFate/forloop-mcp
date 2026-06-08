@@ -3,11 +3,14 @@ import { z } from "zod";
 export const BudgetConfigSchema = z.object({
   maxIterations: z.coerce.number().int().positive().default(8),
   maxInvalidDecisions: z.coerce.number().int().nonnegative().default(2),
-  maxRepeatedActions: z.coerce.number().int().positive().default(3)
+  maxRepeatedActions: z.coerce.number().int().positive().default(3),
+  maxEmptyRounds: z.coerce.number().int().nonnegative().default(2),
+  maxApproxTokens: z.coerce.number().int().positive().optional()
 }).default({
   maxIterations: 8,
   maxInvalidDecisions: 2,
-  maxRepeatedActions: 3
+  maxRepeatedActions: 3,
+  maxEmptyRounds: 2
 });
 
 export type BudgetConfig = z.infer<typeof BudgetConfigSchema>;

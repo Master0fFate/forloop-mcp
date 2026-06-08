@@ -37,3 +37,7 @@ evaluationCriteria:
     required: true
 budget:
   maxIterations: 8
+  maxInvalidDecisions: 2
+  maxRepeatedActions: 3
+  maxEmptyRounds: 2
+  maxApproxTokens: 12000

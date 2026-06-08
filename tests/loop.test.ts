@@ -84,6 +84,100 @@ describe("agent loop", () => {
     }
   });
 
+  test("abandons after too many empty rounds", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const emptyRoundModel: ModelAdapter = {
+      provider: "test",
+      model: "empty-rounds",
+      async generate() {
+        return {
+          provider: "test",
+          model: "empty-rounds",
+          raw: {
+            status: "final",
+            summary: "Keep claiming done without evidence.",
+            final_answer: "Done.",
+            confidence: 0.9,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Stop empty rounds",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "auto",
+          budget: { maxIterations: 8, maxEmptyRounds: 1 }
+        },
+        { model: emptyRoundModel }
+      );
+
+      expect(result.status).toBe("abandoned");
+      expect(result.events.map((event) => event.type)).toContain("empty_round");
+      expect(JSON.stringify(result.events)).toContain("empty rounds exceeded");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("abandons when approximate token budget is exhausted", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const verboseModel: ModelAdapter = {
+      provider: "test",
+      model: "verbose",
+      async generate() {
+        return {
+          provider: "test",
+          model: "verbose",
+          raw: {
+            status: "continue",
+            summary: "x".repeat(1200),
+            next_action: {
+              type: "tool_call",
+              tool: "repo.run_tests",
+              args: { command: "npm test" }
+            },
+            confidence: 0.8,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Stop when token budget is exhausted",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "auto",
+          budget: { maxIterations: 8, maxApproxTokens: 50 }
+        },
+        { model: verboseModel }
+      );
+
+      expect(result.status).toBe("abandoned");
+      expect(result.events.map((event) => event.type)).toContain("budget_eval");
+      expect(JSON.stringify(result.events)).toContain("approximate token budget");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   test("fails missing workspaces without creating them", async () => {
     const tempRoot = mkdtempSync(join(tmpdir(), "forloop-test-"));
     const workspace = join(tempRoot, "missing-workspace");

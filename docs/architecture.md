@@ -133,6 +133,22 @@ governance:
 
 The deterministic governance layer emits `governance_decision` events with `continue`, `recover`, `escalate`, `stop`, or `abandon`. High-risk decisions can be escalated before execution. Failed steps can enter recovery. Repeated rejected finals or exhausted recovery attempts can abandon the mission instead of letting the loop burn the rest of the budget.
 
+## Exit Conditions
+
+The stop condition is not the agent's own "looks done." Completion is anchored to external criteria and budget policy.
+
+External exits include:
+
+- Required evaluation criteria passed.
+- Security policy denied the proposed action.
+- Human approval denied an escalation.
+- Repeated final answers failed quality gates.
+- Empty rounds exceeded `budget.maxEmptyRounds`.
+- Iterations exceeded `budget.maxIterations`.
+- Approximate model output tokens exceeded `budget.maxApproxTokens`.
+
+`budget_eval` events track approximate model-output token spend using a simple character-based estimate. It is deliberately conservative enough for governance, not a billing-grade tokenizer.
+
 ## Edge-Case Resilience
 
 The runtime treats common failure modes as explicit task states. Missing or invalid workspaces fail without creating the requested workspace. Missing skills and model exceptions are persisted as task events. Invalid model output, repeated actions, denied approvals, failed eval gates, and budget exhaustion all stop through named events so the next run can inspect what broke.

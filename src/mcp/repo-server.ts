@@ -23,7 +23,7 @@ export async function startRepoMcpServer(
   const repoTools = new RepoTools(workspace, testCommand, typecheckCommand);
   const server = new McpServer({
     name: "forloop-repo-tools",
-    version: "0.1.7"
+    version: "0.1.8"
   });
 
   server.registerTool(
