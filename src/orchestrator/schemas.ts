@@ -90,6 +90,12 @@ export const EvaluationResultSchema = z.object({
 
 export type EvaluationResult = z.infer<typeof EvaluationResultSchema>;
 
+export const StepEvaluationResultSchema = EvaluationResultSchema.extend({
+  gate: z.enum(["continue", "stop"])
+});
+
+export type StepEvaluationResult = z.infer<typeof StepEvaluationResultSchema>;
+
 export const TaskEventSchema = z.object({
   id: z.string(),
   taskId: z.string(),

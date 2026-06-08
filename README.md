@@ -6,7 +6,7 @@
 
 ForLoop MCP is an implementation of that shift: a local MCP server and loop runtime that lets an AI harness move from one-shot prompting to controlled execution.
 
-Point your harness at a repository, give it a test command, and ForLoop exposes repo tools, traceable state, approval gates, and a deterministic loop that can drive a task until tests pass or the budget runs out.
+Point your harness at a repository, give it a test command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, and a deterministic runtime that can drive a task until tests pass or the budget runs out.
 
 It separates the system into three explicit layers:
 
@@ -16,7 +16,7 @@ MCP server = tools and external capabilities
 Orchestrator = control flow, state, evaluation, retries, and approvals
 ```
 
-This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, evals, traces, and a demo repo.
+This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, final evals, traces, and a demo repo.
 
 ## Quick Start
 
@@ -184,6 +184,7 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test"
 - Direct MCP `repo.apply_patch` calls are denied unless the server is started with `--allow-mutations`.
 - `repo.run_tests` can only run the configured test command.
 - File paths are sandboxed to the selected workspace.
+- Every tool result is scored by a loop eval gate before the next iteration.
 - Every model response, tool call, tool result, approval, and evaluator result is persisted.
 
 ## Current Scope
@@ -197,7 +198,7 @@ Implemented now:
 - SQLite trace store
 - Repo tool registry
 - MCP stdio server exposing repo tools
-- Deterministic final evaluator
+- Deterministic loop and final evaluator
 - Demo fixture
 - Unit, integration, and smoke tests
 

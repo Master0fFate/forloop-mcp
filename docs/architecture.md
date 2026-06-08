@@ -11,11 +11,11 @@ User goal
   -> structured decision parser
   -> approval policy
   -> repo tool registry / MCP server
-  -> deterministic evaluator
+  -> deterministic loop eval / final eval
   -> SQLite event trace
 ```
 
-The orchestrator owns budgets, validation, approvals, stop conditions, and state. The model only proposes a JSON decision.
+The orchestrator owns budgets, validation, approvals, eval gates, stop conditions, and state. The model only proposes a JSON decision.
 
 ## Boundaries
 
@@ -48,3 +48,9 @@ Every model output must be a valid JSON decision:
 ## Persistence
 
 Task state is append-only. Each event is stored in SQLite as JSON payload with a task id, timestamp, and event type. This makes runs inspectable and exportable.
+
+## Eval Layer
+
+Every executed tool result receives a `loop_eval` event before the next model iteration. The eval layer turns tool output into structured feedback, scores step quality, and can stop the task when a proposed action violates a hard policy boundary such as escaping the workspace or running a command other than the configured test command.
+
+Final answers pass through a separate final evaluator. The final gate rejects empty answers and rejects completion when the latest configured test run failed.

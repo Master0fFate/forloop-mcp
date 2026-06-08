@@ -134,6 +134,13 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       store.append(taskId, "tool_call", { action });
       const result = await registry.call(action);
       store.append(taskId, "tool_result", { result });
+
+      const stepEval = evaluator.evaluateStep(decision, result, store.list(taskId));
+      store.append(taskId, "loop_eval", { iteration, action, evaluation: stepEval });
+      if (stepEval.gate === "stop") {
+        store.append(taskId, "task_failed", { reason: stepEval.feedback, action });
+        return finish("failed");
+      }
     }
 
     store.append(taskId, "budget_exceeded", { maxIterations: task.budget.maxIterations });
