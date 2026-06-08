@@ -14,6 +14,7 @@ It separates the system into four explicit layers:
 Skill.md = reusable task knowledge
 MCP server = tools and external capabilities
 Quality = verifier checks and evidence gates
+Criteria = explicit standards the final answer must satisfy
 Security = sanctioned tools, scoped paths, and configured commands
 Governance = stop, escalate, recover, and abandon decisions
 Orchestrator = control flow, state, retries, approvals, and traceability
@@ -228,6 +229,28 @@ quality:
 Each tool result emits `quality_eval` feedback for the next iteration. Final answers that do not clear the quality gate are rejected and fed back into the loop instead of being shipped as weak completion claims.
 
 By default, the verifier is deterministic: registered tool schemas, workspace policy, configured tests, and optional configured typecheck. `minFinalConfidence` exists only as an extra policy knob; it is not treated as proof because it comes from the agent that produced the answer. Model-based quality review should use a separate verifier model or subagent with a different system prompt.
+
+## Evaluation Criteria
+
+Loops only work as well as their evaluation criteria. ForLoop makes those criteria explicit and traceable:
+
+```yaml
+evaluationCriteria:
+  - id: tool_evidence
+    kind: tool_evidence
+    description: The loop gathered tool evidence before final completion.
+    required: true
+  - id: tests_passed
+    kind: tests_passed
+    description: The latest configured test run passed.
+    required: true
+  - id: diff_present
+    kind: diff_present
+    description: A patch or non-empty diff was recorded.
+    required: false
+```
+
+Supported deterministic criteria are `tool_evidence`, `tests_passed`, `typecheck_passed`, and `diff_present`. Every final eval includes a criterion-by-criterion report with pass/fail, evidence, and feedback. If a required criterion fails, the final answer is rejected and the criteria report is fed into the next loop turn.
 
 ## Security Gate
 

@@ -1,4 +1,13 @@
-import type { AgentDecision, EvaluationResult, StepEvaluationResult, TaskEvent, TaskInput, ToolResult } from "./schemas.js";
+import type {
+  AgentDecision,
+  EvaluationCriterion,
+  EvaluationCriterionResult,
+  EvaluationResult,
+  StepEvaluationResult,
+  TaskEvent,
+  TaskInput,
+  ToolResult
+} from "./schemas.js";
 
 export class DeterministicEvaluator {
   evaluateStep(task: TaskInput, decision: AgentDecision, result: ToolResult, _events: TaskEvent[]): StepEvaluationResult {
@@ -94,14 +103,14 @@ export class DeterministicEvaluator {
   }
 
   evaluateFinal(task: TaskInput, decision: AgentDecision, events: TaskEvent[]): EvaluationResult {
-    const latestTestOutput = latestToolOutput(events, "repo.run_tests");
-    const latestTypecheckOutput = latestToolOutput(events, "repo.run_typecheck");
+    const criteria = evaluateFinalCriteria(task, events);
 
     if (!decision.final_answer?.trim()) {
       return {
         pass: false,
         score: 0.1,
-        feedback: "Final answer rejected because it is empty."
+        feedback: "Final answer rejected because it is empty.",
+        criteria
       };
     }
 
@@ -109,77 +118,173 @@ export class DeterministicEvaluator {
       return {
         pass: false,
         score: 0.25,
-        feedback: `Final answer rejected because confidence ${decision.confidence} is below ${task.quality.minFinalConfidence}.`
+        feedback: `Final answer rejected because confidence ${decision.confidence} is below ${task.quality.minFinalConfidence}.`,
+        criteria
       };
     }
 
-    if (task.quality.requireEvidenceBeforeFinal) {
-      const hasToolEvidence = events.some((event) => event.type === "tool_result");
-      if (!hasToolEvidence) {
-        return {
-          pass: false,
-          score: 0.2,
-          feedback: "Final answer rejected because no tool evidence was gathered before completion."
-        };
-      }
-    }
-
-    if (task.quality.requireTestsPassed) {
-      if (!latestTestOutput) {
-        return {
-          pass: false,
-          score: 0.2,
-          feedback: "Final answer rejected because no configured test run was recorded."
-        };
-      }
-
-      if (latestTestOutput.passed !== true) {
-        return {
-          pass: false,
-          score: 0.3,
-          feedback: "Final answer rejected because the latest configured test run did not pass."
-        };
-      }
-    }
-
-    if (task.quality.requireTypecheckPassed) {
-      if (!task.typecheckCommand) {
-        return {
-          pass: false,
-          score: 0.2,
-          feedback: "Final answer rejected because typecheck verification is required but no typecheck command is configured."
-        };
-      }
-
-      if (!latestTypecheckOutput) {
-        return {
-          pass: false,
-          score: 0.2,
-          feedback: "Final answer rejected because no configured typecheck run was recorded."
-        };
-      }
-
-      if (latestTypecheckOutput.passed !== true) {
-        return {
-          pass: false,
-          score: 0.3,
-          feedback: "Final answer rejected because the latest configured typecheck run did not pass."
-        };
-      }
+    const failedRequiredCriteria = criteria.filter((criterion) => criterion.required && !criterion.pass);
+    if (failedRequiredCriteria.length > 0) {
+      return {
+        pass: false,
+        score: scoreCriteria(criteria),
+        feedback: `Final answer rejected because required evaluation criteria failed: ${failedRequiredCriteria
+          .map((criterion) => criterion.id)
+          .join(", ")}.`,
+        criteria
+      };
     }
 
     return {
       pass: true,
-      score: 1,
-      feedback: "Final answer accepted by deterministic quality evaluator."
+      score: scoreCriteria(criteria),
+      feedback: "Final answer accepted by deterministic quality evaluator.",
+      criteria
     };
   }
 }
 
-function latestToolOutput(events: TaskEvent[], tool: string): { passed?: boolean } | undefined {
+function evaluateFinalCriteria(task: TaskInput, events: TaskEvent[]): EvaluationCriterionResult[] {
+  return finalCriteria(task).map((criterion) => evaluateCriterion(task, criterion, events));
+}
+
+function finalCriteria(task: TaskInput): EvaluationCriterion[] {
+  if (task.evaluationCriteria.length > 0) {
+    return task.evaluationCriteria;
+  }
+
+  const criteria: EvaluationCriterion[] = [];
+  if (task.quality.requireEvidenceBeforeFinal) {
+    criteria.push({
+      id: "tool_evidence",
+      kind: "tool_evidence",
+      description: "At least one tool result was gathered before completion.",
+      required: true
+    });
+  }
+  if (task.quality.requireTestsPassed) {
+    criteria.push({
+      id: "tests_passed",
+      kind: "tests_passed",
+      description: "The latest configured test run passed.",
+      required: true
+    });
+  }
+  if (task.quality.requireTypecheckPassed) {
+    criteria.push({
+      id: "typecheck_passed",
+      kind: "typecheck_passed",
+      description: "The latest configured typecheck run passed.",
+      required: true
+    });
+  }
+  return criteria;
+}
+
+function evaluateCriterion(
+  task: TaskInput,
+  criterion: EvaluationCriterion,
+  events: TaskEvent[]
+): EvaluationCriterionResult {
+  switch (criterion.kind) {
+    case "tool_evidence": {
+      const toolEvents = events.filter((event) => event.type === "tool_result");
+      return {
+        ...criterion,
+        pass: toolEvents.length > 0,
+        evidence: toolEvents.map((event) => {
+          const payload = event.payload as { result?: { tool?: string } };
+          return payload.result?.tool ?? "unknown_tool";
+        }),
+        feedback:
+          toolEvents.length > 0
+            ? "Tool evidence was recorded before final completion."
+            : "No tool evidence was recorded before final completion."
+      };
+    }
+    case "tests_passed":
+      return evaluateToolPassedCriterion(criterion, events, "repo.run_tests", "configured test");
+    case "typecheck_passed": {
+      if (!task.typecheckCommand) {
+        return {
+          ...criterion,
+          pass: false,
+          evidence: [],
+          feedback: "Typecheck criterion failed because no typecheck command is configured."
+        };
+      }
+      return evaluateToolPassedCriterion(criterion, events, "repo.run_typecheck", "configured typecheck");
+    }
+    case "diff_present": {
+      const patchEvents = events.filter((event) => {
+        if (event.type !== "tool_result") {
+          return false;
+        }
+        const payload = event.payload as { result?: { tool?: string; ok?: boolean; output?: unknown } };
+        if (payload.result?.tool === "repo.apply_patch" && payload.result.ok === true) {
+          return true;
+        }
+        if (payload.result?.tool !== "repo.git_diff") {
+          return false;
+        }
+        const output = payload.result.output as { diff?: string } | undefined;
+        return Boolean(output?.diff?.trim());
+      });
+      return {
+        ...criterion,
+        pass: patchEvents.length > 0,
+        evidence: patchEvents.map((event) => {
+          const payload = event.payload as { result?: { tool?: string } };
+          return payload.result?.tool ?? "unknown_tool";
+        }),
+        feedback:
+          patchEvents.length > 0
+            ? "A patch or non-empty git diff was recorded."
+            : "No patch or non-empty git diff was recorded."
+      };
+    }
+  }
+}
+
+function evaluateToolPassedCriterion(
+  criterion: EvaluationCriterion,
+  events: TaskEvent[],
+  tool: string,
+  label: string
+): EvaluationCriterionResult {
+  const latestOutput = latestToolOutput(events, tool);
+  if (!latestOutput) {
+    return {
+      ...criterion,
+      pass: false,
+      evidence: [],
+      feedback: `No ${label} run was recorded.`
+    };
+  }
+
+  return {
+    ...criterion,
+    pass: latestOutput.passed === true,
+    evidence: [`${tool}: exitCode=${latestOutput.exitCode ?? "unknown"}`],
+    feedback:
+      latestOutput.passed === true
+        ? `The latest ${label} run passed.`
+        : `The latest ${label} run did not pass.`
+  };
+}
+
+function scoreCriteria(criteria: EvaluationCriterionResult[]): number {
+  if (criteria.length === 0) {
+    return 1;
+  }
+  const passed = criteria.filter((criterion) => criterion.pass || !criterion.required).length;
+  return passed / criteria.length;
+}
+
+function latestToolOutput(events: TaskEvent[], tool: string): { passed?: boolean; exitCode?: number } | undefined {
   return events
     .filter((event) => event.type === "tool_result")
     .map((event) => event.payload as { result?: { tool?: string; output?: unknown } })
     .filter((payload) => payload.result?.tool === tool)
-    .at(-1)?.result?.output as { passed?: boolean } | undefined;
+    .at(-1)?.result?.output as { passed?: boolean; exitCode?: number } | undefined;
 }

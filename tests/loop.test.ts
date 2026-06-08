@@ -187,7 +187,7 @@ describe("agent loop", () => {
       expect(result.events.map((event) => event.type)).toContain("quality_eval");
       expect(result.events.map((event) => event.type)).toContain("final_rejected");
       expect(result.events.map((event) => event.type)).toContain("governance_decision");
-      expect(JSON.stringify(result.events)).toContain("no tool evidence");
+      expect(JSON.stringify(result.events)).toContain("No tool evidence");
       expect(JSON.stringify(result.events)).toContain("Mission abandoned");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
@@ -352,7 +352,91 @@ describe("agent loop", () => {
 
       expect(result.status).toBe("abandoned");
       expect(result.events.map((event) => event.type)).toContain("final_rejected");
-      expect(JSON.stringify(result.events)).toContain("no configured typecheck run was recorded");
+      expect(JSON.stringify(result.events)).toContain("typecheck_passed");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("custom evaluation criteria reject finals without required evidence", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const finalAfterTestsModel: ModelAdapter = {
+      provider: "test",
+      model: "criteria-final",
+      async generate(request) {
+        const hasRunTests = request.events.some((event) => {
+          const payload = event.payload as { result?: { tool?: string } };
+          return event.type === "tool_result" && payload.result?.tool === "repo.run_tests";
+        });
+
+        if (!hasRunTests) {
+          return {
+            provider: "test",
+            model: "criteria-final",
+            raw: {
+              status: "continue",
+              summary: "Gather test evidence first.",
+              next_action: {
+                type: "tool_call",
+                tool: "repo.run_tests",
+                args: { command: request.task.testCommand }
+              },
+              confidence: 0.8,
+              risk: "low",
+              requires_human_approval: false
+            }
+          };
+        }
+
+        return {
+          provider: "test",
+          model: "criteria-final",
+          raw: {
+            status: "final",
+            summary: "Try to finalize without change evidence.",
+            final_answer: "Done.",
+            confidence: 0.9,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Require explicit change evidence",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "node -e \"process.exit(0)\"",
+          approvalMode: "auto",
+          evaluationCriteria: [
+            {
+              id: "tests_passed",
+              kind: "tests_passed",
+              description: "The latest configured test run passed.",
+              required: true
+            },
+            {
+              id: "diff_present",
+              kind: "diff_present",
+              description: "A patch or diff was recorded before final completion.",
+              required: true
+            }
+          ],
+          budget: { maxIterations: 3 }
+        },
+        { model: finalAfterTestsModel }
+      );
+
+      expect(result.status).toBe("abandoned");
+      expect(result.events.map((event) => event.type)).toContain("final_rejected");
+      expect(JSON.stringify(result.events)).toContain("diff_present");
+      expect(JSON.stringify(result.events)).toContain("No patch or non-empty git diff was recorded");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

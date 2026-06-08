@@ -146,6 +146,16 @@ Run the demo manually:
 npm run dev -- run --workspace examples/buggy-auth-service --goal "Fix failing tests" --auto-approve
 ```
 
+For task files, make acceptance criteria explicit:
+
+```yaml
+evaluationCriteria:
+  - id: tests_passed
+    kind: tests_passed
+    description: The latest configured test run passed.
+    required: true
+```
+
 Start the MCP repo server:
 
 ```bash

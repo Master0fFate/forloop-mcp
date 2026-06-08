@@ -1,6 +1,6 @@
 {
   "name": "forloop-mcp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Model-agnostic agent loop runtime with MCP repo tools, structured decisions, approvals, evals, and traceable state.",
   "type": "module",
   "author": "Master0fFate",

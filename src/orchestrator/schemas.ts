@@ -64,6 +64,30 @@ export const SecurityConfigSchema = z.object({
 
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
 
+export const EvaluationCriterionKindSchema = z.enum([
+  "tool_evidence",
+  "tests_passed",
+  "typecheck_passed",
+  "diff_present"
+]);
+
+export const EvaluationCriterionSchema = z.object({
+  id: z.string().min(1),
+  kind: EvaluationCriterionKindSchema,
+  description: z.string().min(1),
+  required: z.boolean().default(true)
+});
+
+export type EvaluationCriterion = z.infer<typeof EvaluationCriterionSchema>;
+
+export const EvaluationCriterionResultSchema = EvaluationCriterionSchema.extend({
+  pass: z.boolean(),
+  evidence: z.array(z.string()).default([]),
+  feedback: z.string()
+});
+
+export type EvaluationCriterionResult = z.infer<typeof EvaluationCriterionResultSchema>;
+
 export const ApprovalModeSchema = z.enum(["manual", "auto", "deny"]);
 
 export const TaskInputSchema = z.object({
@@ -78,6 +102,7 @@ export const TaskInputSchema = z.object({
   quality: QualityConfigSchema,
   governance: GovernanceConfigSchema,
   security: SecurityConfigSchema,
+  evaluationCriteria: z.array(EvaluationCriterionSchema).default([]),
   budget: BudgetConfigSchema
 });
 
@@ -141,7 +166,8 @@ export type ApprovalResult = z.infer<typeof ApprovalResultSchema>;
 export const EvaluationResultSchema = z.object({
   pass: z.boolean(),
   score: z.number().min(0).max(1),
-  feedback: z.string()
+  feedback: z.string(),
+  criteria: z.array(EvaluationCriterionResultSchema).optional()
 });
 
 export type EvaluationResult = z.infer<typeof EvaluationResultSchema>;

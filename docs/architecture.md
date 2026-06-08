@@ -12,12 +12,13 @@ User goal
   -> approval policy
   -> deterministic security gate
   -> repo tool registry / MCP server
+  -> explicit evaluation criteria
   -> deterministic loop eval / quality eval / final eval
   -> deterministic governance decision
   -> SQLite event trace
 ```
 
-The orchestrator owns budgets, validation, approvals, security gates, quality gates, governance decisions, stop conditions, and state. The model only proposes a JSON decision.
+The orchestrator owns budgets, validation, approvals, security gates, evaluation criteria, quality gates, governance decisions, stop conditions, and state. The model only proposes a JSON decision.
 
 ## Boundaries
 
@@ -75,6 +76,24 @@ quality:
 Rejected final answers produce `final_rejected` plus `quality_eval` events. Those events become part of the next model request, so quality feedback is fed back into the loop instead of living only in logs.
 
 The default verifier is deterministic: schemas, workspace policy, configured tests, and optional configured typecheck. Self-reported confidence is not proof; `minFinalConfidence` is only an optional policy threshold. If quality review is model-based, it must come from a separate verifier model or a subagent with a different system prompt, otherwise it is the same agent rubber-stamping itself.
+
+## Evaluation Criteria
+
+The final evaluator does not rely on one vague score. It evaluates explicit criteria and writes the criteria report into the final eval.
+
+```yaml
+evaluationCriteria:
+  - id: tool_evidence
+    kind: tool_evidence
+    description: The loop gathered tool evidence before final completion.
+    required: true
+  - id: tests_passed
+    kind: tests_passed
+    description: The latest configured test run passed.
+    required: true
+```
+
+Supported deterministic criterion kinds are `tool_evidence`, `tests_passed`, `typecheck_passed`, and `diff_present`. When `evaluationCriteria` is empty, ForLoop derives default criteria from the `quality` policy. When criteria are supplied, they become the final acceptance standard. Required failures reject the final answer and feed criterion feedback into the next model turn.
 
 ## Security Gate
 
