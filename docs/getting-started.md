@@ -2,12 +2,17 @@
 
 ## MCP Harness Install
 
-Use this command in Claude Desktop, Cursor, Windsurf, VS Code MCP configs, Codex MCP configs, or any harness that accepts a standard MCP `command` plus `args` block:
+ForLoop MCP runs as a local stdio MCP server. Your AI harness starts it with a command and args, then exchanges MCP messages over stdin/stdout.
+
+There is no single config file shape for every harness. Use the snippet that matches your client.
+
+Claude Desktop, Claude Code project `.mcp.json`, Cursor, Windsurf, Devin Desktop, and other `mcpServers` clients:
 
 ```json
 {
   "mcpServers": {
-    "forloop-repo": {
+    "forloopRepo": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
@@ -22,12 +27,54 @@ Use this command in Claude Desktop, Cursor, Windsurf, VS Code MCP configs, Codex
 }
 ```
 
-For Windows harnesses that do not resolve `npx` directly:
+Claude Code CLI:
+
+```bash
+claude mcp add --transport stdio forloopRepo -- npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
+```
+
+VS Code `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "forloopRepo": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "forloop-mcp@latest",
+        "--workspace",
+        "${workspaceFolder}",
+        "--test-command",
+        "npm test"
+      ]
+    }
+  }
+}
+```
+
+Codex CLI:
+
+```bash
+codex mcp add forloopRepo -- npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
+```
+
+Codex TOML:
+
+```toml
+[mcp_servers.forloopRepo]
+command = "npx"
+args = ["-y", "forloop-mcp@latest", "--workspace", "/absolute/path/to/repo", "--test-command", "npm test"]
+```
+
+Windows fallback, for harnesses that do not resolve `npx` directly:
 
 ```json
 {
   "mcpServers": {
-    "forloop-repo": {
+    "forloopRepo": {
+      "type": "stdio",
       "command": "cmd",
       "args": [
         "/c",
@@ -46,18 +93,21 @@ For Windows harnesses that do not resolve `npx` directly:
 
 Add `--allow-mutations` only for trusted harnesses where you want direct MCP patching enabled.
 
-Before the npm package is published, install from GitHub:
+This package is built for local stdio MCP hosts. Remote ChatGPT/OpenAI connector surfaces require remote HTTP MCP servers, so use an HTTP bridge or deploy a remote wrapper if you need that environment.
+
+If npm is unavailable or you want the latest `main` branch, install from GitHub:
 
 ```bash
 npx -y github:Master0fFate/forloop-mcp --workspace /absolute/path/to/repo --test-command "npm test"
 ```
 
-GitHub MCP harness config before npm publication:
+GitHub MCP harness config:
 
 ```json
 {
   "mcpServers": {
-    "forloop-repo": {
+    "forloopRepo": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
@@ -71,6 +121,8 @@ GitHub MCP harness config before npm publication:
   }
 }
 ```
+
+`forloop-mcp` publishes a binary with the same name as the package. Modern `npx` resolves that binary and passes the remaining args to it.
 
 Install dependencies:
 

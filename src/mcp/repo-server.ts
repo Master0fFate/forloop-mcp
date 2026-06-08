@@ -110,6 +110,11 @@ function asMcpResult(result: unknown): { content: Array<{ type: "text"; text: st
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  if (hasFlag("help") || hasFlag("h")) {
+    printUsage();
+    process.exit(0);
+  }
+
   await startRepoMcpServer(readArg("workspace", process.cwd()), readArg("test-command", "npm test"), {
     allowMutations: hasFlag("allow-mutations")
   });
@@ -130,7 +135,7 @@ function readArg(name: string, fallback: string): string {
 }
 
 function hasFlag(name: string): boolean {
-  return process.argv.includes(`--${name}`);
+  return process.argv.includes(`--${name}`) || (name.length === 1 && process.argv.includes(`-${name}`));
 }
 
 function deniedMutation(tool: string): ToolResult {
@@ -139,4 +144,22 @@ function deniedMutation(tool: string): ToolResult {
     ok: false,
     error: "Direct MCP mutations are disabled by default. Restart with --allow-mutations to enable this tool."
   };
+}
+
+function printUsage(): void {
+  console.log(`ForLoop MCP repo server
+
+Usage:
+  forloop-mcp --workspace <path> --test-command <command> [--allow-mutations]
+
+Examples:
+  forloop-mcp --workspace /absolute/path/to/repo --test-command "npm test"
+  npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
+
+Options:
+  --workspace <path>       Repository workspace the MCP tools may access.
+  --test-command <command> Test command allowed through repo.run_tests.
+  --allow-mutations        Enable direct MCP repo.apply_patch calls.
+  --help, -h               Show this help text.
+`);
 }
