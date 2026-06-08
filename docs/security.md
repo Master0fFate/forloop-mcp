@@ -6,6 +6,8 @@ ForLoop MCP is safe by default for local development workflows.
 
 - Model outputs are schema-validated before execution.
 - Tool names must be registered.
+- The orchestrator denies tools outside `security.allowedTools` before execution.
+- The standalone MCP server can deny tools outside repeated `--allowed-tool` flags.
 - Paths are resolved and checked against the workspace root.
 - Mutating tools require approval.
 - Direct MCP mutations are disabled by default and require `--allow-mutations`.

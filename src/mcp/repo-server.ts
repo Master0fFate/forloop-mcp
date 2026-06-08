@@ -9,6 +9,7 @@ import type { ToolResult } from "../orchestrator/schemas.js";
 
 export interface RepoMcpServerOptions {
   allowMutations?: boolean;
+  allowedTools?: string[];
 }
 
 export async function startRepoMcpServer(
@@ -22,7 +23,7 @@ export async function startRepoMcpServer(
   const repoTools = new RepoTools(workspace, testCommand, typecheckCommand);
   const server = new McpServer({
     name: "forloop-repo-tools",
-    version: "0.1.5"
+    version: "0.1.6"
   });
 
   server.registerTool(
@@ -32,7 +33,7 @@ export async function startRepoMcpServer(
       description: "List files inside the workspace, excluding build and dependency directories.",
       inputSchema: { limit: z.number().int().positive().optional() }
     },
-    async (args) => asMcpResult(await repoTools.listFiles(args))
+    async (args) => callAllowed(resolvedOptions, "repo.list_files", () => repoTools.listFiles(args))
   );
 
   server.registerTool(
@@ -42,7 +43,7 @@ export async function startRepoMcpServer(
       description: "Search text files inside the workspace for an exact string.",
       inputSchema: { query: z.string().min(1), limit: z.number().int().positive().optional() }
     },
-    async (args) => asMcpResult(await repoTools.searchCode(args))
+    async (args) => callAllowed(resolvedOptions, "repo.search_code", () => repoTools.searchCode(args))
   );
 
   server.registerTool(
@@ -52,7 +53,7 @@ export async function startRepoMcpServer(
       description: "Read a UTF-8 text file inside the workspace.",
       inputSchema: { path: z.string().min(1), maxBytes: z.number().int().positive().optional() }
     },
-    async (args) => asMcpResult(await repoTools.readFile(args))
+    async (args) => callAllowed(resolvedOptions, "repo.read_file", () => repoTools.readFile(args))
   );
 
   server.registerTool(
@@ -71,6 +72,9 @@ export async function startRepoMcpServer(
       }
     },
     async (args) => {
+      if (!isAllowed(resolvedOptions, "repo.apply_patch")) {
+        return asMcpResult(deniedTool("repo.apply_patch"));
+      }
       if (!resolvedOptions.allowMutations) {
         return asMcpResult(deniedMutation("repo.apply_patch"));
       }
@@ -85,7 +89,7 @@ export async function startRepoMcpServer(
       description: "Run only the configured test command.",
       inputSchema: { command: z.string().optional() }
     },
-    async (args) => asMcpResult(await repoTools.runTests(args))
+    async (args) => callAllowed(resolvedOptions, "repo.run_tests", () => repoTools.runTests(args))
   );
 
   server.registerTool(
@@ -95,7 +99,7 @@ export async function startRepoMcpServer(
       description: "Run only the configured typecheck command, when one is configured.",
       inputSchema: { command: z.string().optional() }
     },
-    async (args) => asMcpResult(await repoTools.runTypecheck(args))
+    async (args) => callAllowed(resolvedOptions, "repo.run_typecheck", () => repoTools.runTypecheck(args))
   );
 
   server.registerTool(
@@ -105,7 +109,7 @@ export async function startRepoMcpServer(
       description: "Return git diff for the workspace when it is a git repository.",
       inputSchema: {}
     },
-    async () => asMcpResult(await repoTools.gitDiff())
+    async () => callAllowed(resolvedOptions, "repo.git_diff", () => repoTools.gitDiff())
   );
 
   await server.connect(new StdioServerTransport());
@@ -133,7 +137,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     readArg("test-command", "npm test"),
     readArg("typecheck-command"),
     {
-      allowMutations: hasFlag("allow-mutations")
+      allowMutations: hasFlag("allow-mutations"),
+      allowedTools: readRepeatedArg("allowed-tool")
     }
   );
 }
@@ -156,6 +161,46 @@ function readArg(name: string, fallback?: string): string | undefined {
 
 function hasFlag(name: string): boolean {
   return process.argv.includes(`--${name}`) || (name.length === 1 && process.argv.includes(`-${name}`));
+}
+
+function readRepeatedArg(name: string): string[] | undefined {
+  const flag = `--${name}`;
+  const values: string[] = [];
+  for (let index = 2; index < process.argv.length; index += 1) {
+    const arg = process.argv[index];
+    if (arg === flag && process.argv[index + 1]) {
+      values.push(process.argv[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg?.startsWith(`${flag}=`)) {
+      values.push(arg.slice(flag.length + 1));
+    }
+  }
+  return values.length > 0 ? values : undefined;
+}
+
+async function callAllowed(
+  options: RepoMcpServerOptions,
+  tool: string,
+  run: () => Promise<ToolResult>
+): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  if (!isAllowed(options, tool)) {
+    return asMcpResult(deniedTool(tool));
+  }
+  return asMcpResult(await run());
+}
+
+function isAllowed(options: RepoMcpServerOptions, tool: string): boolean {
+  return !options.allowedTools || options.allowedTools.includes(tool);
+}
+
+function deniedTool(tool: string): ToolResult {
+  return {
+    tool,
+    ok: false,
+    error: `Tool is not allowed by this MCP server security policy: ${tool}`
+  };
 }
 
 function deniedMutation(tool: string): ToolResult {
@@ -181,6 +226,7 @@ Options:
   --test-command <command> Test command allowed through repo.run_tests.
   --typecheck-command <command>
                            Optional command allowed through repo.run_typecheck.
+  --allowed-tool <name>    Restrict MCP calls to repeated allowed tool names.
   --allow-mutations        Enable direct MCP repo.apply_patch calls.
   --help, -h               Show this help text.
 `);

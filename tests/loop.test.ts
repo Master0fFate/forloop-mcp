@@ -32,6 +32,7 @@ describe("agent loop", () => {
       expect(result.events.map((event) => event.type)).toContain("approval_requested");
       expect(result.events.map((event) => event.type)).toContain("loop_eval");
       expect(result.events.map((event) => event.type)).toContain("quality_eval");
+      expect(result.events.map((event) => event.type)).toContain("security_eval");
       expect(result.events.map((event) => event.type)).toContain("governance_decision");
       expect(JSON.stringify(result.events)).toContain('"action":"recover"');
       expect(readFileSync(join(workspace, "src", "validatePassword.js"), "utf8")).toContain(
@@ -400,8 +401,61 @@ describe("agent loop", () => {
 
       const loopEval = result.events.find((event) => event.type === "loop_eval");
       expect(result.status).toBe("failed");
+      expect(result.events.map((event) => event.type)).toContain("security_eval");
       expect(JSON.stringify(loopEval?.payload)).toContain('"gate":"stop"');
       expect(JSON.stringify(loopEval?.payload)).toContain("Only the configured test command is allowed");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("security gate denies tools outside the sanctioned set before execution", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const unsanctionedToolModel: ModelAdapter = {
+      provider: "test",
+      model: "unsanctioned-tool",
+      async generate() {
+        return {
+          provider: "test",
+          model: "unsanctioned-tool",
+          raw: {
+            status: "continue",
+            summary: "Try an unsanctioned discovery action.",
+            next_action: {
+              type: "tool_call",
+              tool: "repo.read_file",
+              args: { path: "src/validatePassword.js" }
+            },
+            confidence: 0.8,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Deny unsanctioned tools",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "auto",
+          security: { allowedTools: ["repo.run_tests"] },
+          budget: { maxIterations: 3 }
+        },
+        { model: unsanctionedToolModel }
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.events.map((event) => event.type)).toContain("security_eval");
+      expect(result.events.map((event) => event.type)).toContain("tool_denied");
+      expect(result.events.map((event) => event.type)).not.toContain("tool_call");
+      expect(JSON.stringify(result.events)).toContain("Denied unsanctioned tool: repo.read_file");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

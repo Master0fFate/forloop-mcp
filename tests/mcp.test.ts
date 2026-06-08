@@ -58,4 +58,37 @@ describe("repo MCP server", () => {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  test("denies MCP calls outside the allowed tool policy", async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "forloop-mcp-security-test-"));
+    const workspace = join(tempRoot, "buggy-auth-service");
+    cpSync(join(projectRoot, "examples", "buggy-auth-service"), workspace, { recursive: true });
+
+    const client = new Client({ name: "forloop-test-client", version: "0.0.0" });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [
+        resolve(projectRoot, "node_modules", "tsx", "dist", "cli.mjs"),
+        "src/mcp/repo-server.ts",
+        `--workspace=${workspace}`,
+        "--test-command=npm test",
+        "--allowed-tool=repo.list_files"
+      ],
+      cwd: projectRoot,
+      stderr: "pipe"
+    });
+
+    try {
+      await client.connect(transport);
+      const denied = await client.callTool({
+        name: "repo.read_file",
+        arguments: { path: "src/validatePassword.js" }
+      });
+      const deniedText = denied.content.find((content) => content.type === "text")?.text ?? "";
+      expect(deniedText).toContain("Tool is not allowed by this MCP server security policy");
+    } finally {
+      await client.close();
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });

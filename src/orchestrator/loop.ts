@@ -5,6 +5,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseAgentDecision } from "./decision.js";
 import { DeterministicEvaluator } from "./evaluator.js";
 import { DeterministicGovernance } from "./governance.js";
+import { DeterministicSecurityGate } from "./security.js";
 import { PolicyApprovalManager, type ApprovalManager } from "./approval.js";
 import { TaskInputSchema, type TaskEvent, type TaskInput, type TaskResult } from "./schemas.js";
 import type { ModelAdapter, ModelResponse } from "../models/base.js";
@@ -36,6 +37,7 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   const registry = new RepoToolRegistry(repoTools);
   const evaluator = new DeterministicEvaluator();
   const governance = new DeterministicGovernance();
+  const security = new DeterministicSecurityGate();
 
   try {
     store.append(taskId, "task_created", { task: { ...task, workspace }, traceDbPath });
@@ -146,9 +148,13 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
         return finish("failed");
       }
 
-      if (!registry.has(action.tool)) {
-        store.append(taskId, "tool_denied", { action, reason: "Tool is not registered." });
-        continue;
+      const toolDescription = registry.get(action.tool);
+      const securityDecision = security.assessAction(task, action, toolDescription);
+      store.append(taskId, "security_eval", { phase: "pre_action", action, decision: securityDecision });
+      if (securityDecision.action === "deny") {
+        store.append(taskId, "tool_denied", { action, reason: securityDecision.reason });
+        store.append(taskId, "task_failed", { reason: securityDecision.reason, action });
+        return finish("failed");
       }
 
       const actionKey = `${action.tool}:${JSON.stringify(action.args)}`;
@@ -159,7 +165,12 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
         return finish("failed");
       }
 
-      if (preActionGovernance?.action === "escalate" || decision.requires_human_approval || registry.requiresApproval(action.tool)) {
+      if (
+        securityDecision.action === "escalate" ||
+        preActionGovernance?.action === "escalate" ||
+        decision.requires_human_approval ||
+        registry.requiresApproval(action.tool)
+      ) {
         store.append(taskId, "approval_requested", { decision });
         const approval = await approvalManager.request(decision, task);
         store.append(taskId, "approval_result", { approval });
@@ -172,6 +183,10 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       store.append(taskId, "tool_call", { action });
       const result = await registry.call(action);
       store.append(taskId, "tool_result", { result });
+      const resultSecurityDecision = security.assessToolResult(result);
+      if (resultSecurityDecision) {
+        store.append(taskId, "security_eval", { phase: "tool_result", action, decision: resultSecurityDecision });
+      }
 
       const stepEval = evaluator.evaluateStep(task, decision, result, store.list(taskId));
       store.append(taskId, "loop_eval", { iteration, action, evaluation: stepEval });
@@ -274,7 +289,7 @@ function errorMessage(error: unknown): string {
 }
 
 function deterministicVerifierMetadata(task: TaskInput): { kind: "deterministic"; checks: string[] } {
-  const checks = ["tool_schema", "workspace_policy"];
+  const checks = ["tool_schema", "security_policy", "workspace_policy"];
   if (task.quality.requireTestsPassed) {
     checks.push("configured_tests");
   }

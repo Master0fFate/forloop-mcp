@@ -44,6 +44,26 @@ export const GovernanceConfigSchema = z.object({
 
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
 
+const defaultAllowedTools = [
+  "repo.list_files",
+  "repo.search_code",
+  "repo.read_file",
+  "repo.apply_patch",
+  "repo.run_tests",
+  "repo.run_typecheck",
+  "repo.git_diff"
+];
+
+export const SecurityConfigSchema = z.object({
+  allowedTools: z.array(z.string().min(1)).default(defaultAllowedTools),
+  requireApprovalForMutations: z.boolean().default(true)
+}).default({
+  allowedTools: defaultAllowedTools,
+  requireApprovalForMutations: true
+});
+
+export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
+
 export const ApprovalModeSchema = z.enum(["manual", "auto", "deny"]);
 
 export const TaskInputSchema = z.object({
@@ -57,6 +77,7 @@ export const TaskInputSchema = z.object({
   traceDbPath: z.string().optional(),
   quality: QualityConfigSchema,
   governance: GovernanceConfigSchema,
+  security: SecurityConfigSchema,
   budget: BudgetConfigSchema
 });
 
@@ -140,6 +161,17 @@ export const GovernanceDecisionResultSchema = z.object({
 });
 
 export type GovernanceDecisionResult = z.infer<typeof GovernanceDecisionResultSchema>;
+
+export const SecurityActionSchema = z.enum(["allow", "escalate", "deny"]);
+
+export const SecurityDecisionResultSchema = z.object({
+  action: SecurityActionSchema,
+  reason: z.string(),
+  boundary: z.enum(["tool", "mutation", "command", "workspace", "policy"]),
+  metrics: z.record(z.string(), z.unknown()).default({})
+});
+
+export type SecurityDecisionResult = z.infer<typeof SecurityDecisionResultSchema>;
 
 export const TaskEventSchema = z.object({
   id: z.string(),

@@ -14,6 +14,7 @@ It separates the system into four explicit layers:
 Skill.md = reusable task knowledge
 MCP server = tools and external capabilities
 Quality = verifier checks and evidence gates
+Security = sanctioned tools, scoped paths, and configured commands
 Governance = stop, escalate, recover, and abandon decisions
 Orchestrator = control flow, state, retries, approvals, and traceability
 ```
@@ -125,6 +126,12 @@ For a second deterministic verifier, add a configured typecheck command:
 "args": ["-y", "forloop-mcp@latest", "--workspace", "/absolute/path/to/repo", "--test-command", "npm test", "--typecheck-command", "npm run typecheck"]
 ```
 
+For wider loops, restrict the action surface with repeated allowed-tool flags:
+
+```json
+"args": ["-y", "forloop-mcp@latest", "--workspace", "/absolute/path/to/repo", "--test-command", "npm test", "--allowed-tool", "repo.list_files", "--allowed-tool", "repo.read_file", "--allowed-tool", "repo.run_tests"]
+```
+
 This package is built for local stdio MCP hosts. Remote ChatGPT/OpenAI connector surfaces require remote HTTP MCP servers, so use an HTTP bridge or deploy a remote wrapper if you need that environment.
 
 If npm is unavailable or you want the latest `main` branch, use GitHub as the package source:
@@ -190,9 +197,11 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-com
 - The model proposes structured actions; the runtime validates and executes.
 - `repo.apply_patch` requires approval.
 - Direct MCP `repo.apply_patch` calls are denied unless the server is started with `--allow-mutations`.
+- Standalone MCP servers can restrict calls with repeated `--allowed-tool <name>` flags.
 - `repo.run_tests` can only run the configured test command.
 - `repo.run_typecheck` can only run the configured typecheck command, when one is configured.
 - File paths are sandboxed to the selected workspace.
+- The orchestrator emits `security_eval` before tool execution and denies unsanctioned tools before they run.
 - Every tool result is scored by a loop eval gate before the next iteration.
 - Final answers are rejected by default unless the loop gathered tool evidence and recorded a passing configured test run.
 - If `quality.requireTypecheckPassed` is enabled, final answers also require a passing configured typecheck run.
@@ -219,6 +228,27 @@ quality:
 Each tool result emits `quality_eval` feedback for the next iteration. Final answers that do not clear the quality gate are rejected and fed back into the loop instead of being shipped as weak completion claims.
 
 By default, the verifier is deterministic: registered tool schemas, workspace policy, configured tests, and optional configured typecheck. `minFinalConfidence` exists only as an extra policy knob; it is not treated as proof because it comes from the agent that produced the answer. Model-based quality review should use a separate verifier model or subagent with a different system prompt.
+
+## Security Gate
+
+Closed loops mostly use gates for quality: did the work meet the standard? Open loops also use gates for security: is this action sanctioned at all?
+
+ForLoop makes that boundary explicit through the task `security` block:
+
+```yaml
+security:
+  allowedTools:
+    - repo.list_files
+    - repo.search_code
+    - repo.read_file
+    - repo.apply_patch
+    - repo.run_tests
+    - repo.run_typecheck
+    - repo.git_diff
+  requireApprovalForMutations: true
+```
+
+Before any tool runs, the deterministic security gate emits `security_eval`. Unknown tools, disallowed tools, workspace escapes, and unconfigured command attempts are denied as policy violations. The wider the loop, the smaller this allowed-tool set should be.
 
 ## Governance
 

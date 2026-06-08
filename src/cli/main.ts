@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("forloop")
   .description("Model-agnostic agent loop runtime with MCP repo tools.")
-  .version("0.1.5");
+  .version("0.1.6");
 
 program
   .command("init")
@@ -44,6 +44,18 @@ program
         maxRecoveryAttempts: 3,
         maxFinalRejections: 2,
         maxConsecutiveFailedSteps: 3
+      },
+      security: {
+        allowedTools: [
+          "repo.list_files",
+          "repo.search_code",
+          "repo.read_file",
+          "repo.apply_patch",
+          "repo.run_tests",
+          "repo.run_typecheck",
+          "repo.git_diff"
+        ],
+        requireApprovalForMutations: true
       },
       budget: { maxIterations: 8 }
     });
@@ -129,9 +141,18 @@ program
   .option("--workspace <path>", "Workspace path", ".")
   .option("--test-command <command>", "Configured test command", "npm test")
   .option("--typecheck-command <command>", "Optional configured typecheck command")
+  .option("--allowed-tool <name...>", "Restrict MCP calls to allowed tool names")
   .option("--allow-mutations", "Allow direct MCP mutation tools such as repo.apply_patch")
-  .action(async (options: { workspace: string; testCommand: string; typecheckCommand?: string; allowMutations?: boolean }) => {
+  .action(
+    async (options: {
+      workspace: string;
+      testCommand: string;
+      typecheckCommand?: string;
+      allowedTool?: string[];
+      allowMutations?: boolean;
+    }) => {
     await startRepoMcpServer(resolve(options.workspace), options.testCommand, options.typecheckCommand, {
+      allowedTools: options.allowedTool,
       allowMutations: options.allowMutations === true
     });
   });

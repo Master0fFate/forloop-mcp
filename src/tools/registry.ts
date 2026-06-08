@@ -73,6 +73,10 @@ export class RepoToolRegistry {
     return this.tools.some((tool) => tool.name === toolName);
   }
 
+  get(toolName: string): ToolDescription | undefined {
+    return this.tools.find((tool) => tool.name === toolName);
+  }
+
   requiresApproval(toolName: string): boolean {
     return this.tools.find((tool) => tool.name === toolName)?.mutates ?? true;
   }

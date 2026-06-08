@@ -10,13 +10,14 @@ User goal
   -> model adapter
   -> structured decision parser
   -> approval policy
+  -> deterministic security gate
   -> repo tool registry / MCP server
   -> deterministic loop eval / quality eval / final eval
   -> deterministic governance decision
   -> SQLite event trace
 ```
 
-The orchestrator owns budgets, validation, approvals, quality gates, governance decisions, stop conditions, and state. The model only proposes a JSON decision.
+The orchestrator owns budgets, validation, approvals, security gates, quality gates, governance decisions, stop conditions, and state. The model only proposes a JSON decision.
 
 ## Boundaries
 
@@ -74,6 +75,27 @@ quality:
 Rejected final answers produce `final_rejected` plus `quality_eval` events. Those events become part of the next model request, so quality feedback is fed back into the loop instead of living only in logs.
 
 The default verifier is deterministic: schemas, workspace policy, configured tests, and optional configured typecheck. Self-reported confidence is not proof; `minFinalConfidence` is only an optional policy threshold. If quality review is model-based, it must come from a separate verifier model or a subagent with a different system prompt, otherwise it is the same agent rubber-stamping itself.
+
+## Security Gate
+
+In closed loops, the gate is mostly a quality check. In open loops, the same boundary also becomes a security control: it decides whether an exploratory action is sanctioned before anything runs.
+
+The task `security` block defines the action surface:
+
+```yaml
+security:
+  allowedTools:
+    - repo.list_files
+    - repo.search_code
+    - repo.read_file
+    - repo.apply_patch
+    - repo.run_tests
+    - repo.run_typecheck
+    - repo.git_diff
+  requireApprovalForMutations: true
+```
+
+The orchestrator emits `security_eval` before tool execution. Unknown tools and tools outside `allowedTools` are denied before execution. Workspace escapes and unconfigured command attempts are also surfaced as security evaluations from tool results. Standalone MCP servers can enforce the same allowed-tool policy with repeated `--allowed-tool <name>` flags.
 
 ## Governance Layer
 

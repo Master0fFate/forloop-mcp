@@ -16,5 +16,15 @@ governance:
   maxRecoveryAttempts: 3
   maxFinalRejections: 2
   maxConsecutiveFailedSteps: 3
+security:
+  allowedTools:
+    - repo.list_files
+    - repo.search_code
+    - repo.read_file
+    - repo.apply_patch
+    - repo.run_tests
+    - repo.run_typecheck
+    - repo.git_diff
+  requireApprovalForMutations: true
 budget:
   maxIterations: 8

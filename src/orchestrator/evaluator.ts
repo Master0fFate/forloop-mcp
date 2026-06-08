@@ -17,7 +17,11 @@ export class DeterministicEvaluator {
 
     if (!result.ok) {
       const error = result.error ?? "Tool returned an error.";
-      if (error.includes("Path escapes workspace") || error.includes("Only the configured test command is allowed")) {
+      if (
+        error.includes("Path escapes workspace") ||
+        error.includes("Only the configured test command is allowed") ||
+        error.includes("Only the configured typecheck command is allowed")
+      ) {
         return {
           pass: false,
           score: 0,

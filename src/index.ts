@@ -8,6 +8,9 @@ export {
   GovernanceConfigSchema,
   GovernanceDecisionResultSchema,
   QualityConfigSchema,
+  SecurityActionSchema,
+  SecurityConfigSchema,
+  SecurityDecisionResultSchema,
   StepEvaluationResultSchema,
   TaskEventSchema,
   TaskInputSchema,
@@ -21,6 +24,8 @@ export {
   type GovernanceConfig,
   type GovernanceDecisionResult,
   type QualityConfig,
+  type SecurityConfig,
+  type SecurityDecisionResult,
   type StepEvaluationResult,
   type TaskEvent,
   type TaskInput,
@@ -30,6 +35,7 @@ export {
 } from "./orchestrator/schemas.js";
 export { parseAgentDecision } from "./orchestrator/decision.js";
 export { DeterministicGovernance } from "./orchestrator/governance.js";
+export { DeterministicSecurityGate } from "./orchestrator/security.js";
 export { PolicyApprovalManager, type ApprovalManager } from "./orchestrator/approval.js";
 export { DeterministicEvaluator } from "./orchestrator/evaluator.js";
 export { createModelAdapter } from "./models/router.js";
