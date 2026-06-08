@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseAgentDecision } from "./decision.js";
 import { DeterministicEvaluator } from "./evaluator.js";
+import { DeterministicGovernance } from "./governance.js";
 import { PolicyApprovalManager, type ApprovalManager } from "./approval.js";
 import { TaskInputSchema, type TaskEvent, type TaskInput, type TaskResult } from "./schemas.js";
 import type { ModelAdapter, ModelResponse } from "../models/base.js";
@@ -34,6 +35,7 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   const repoTools = new RepoTools(workspace, task.testCommand, task.typecheckCommand);
   const registry = new RepoToolRegistry(repoTools);
   const evaluator = new DeterministicEvaluator();
+  const governance = new DeterministicGovernance();
 
   try {
     store.append(taskId, "task_created", { task: { ...task, workspace }, traceDbPath });
@@ -104,9 +106,15 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
         return finish("failed");
       }
 
+      const preActionGovernance =
+        decision.status === "final" ? undefined : governance.assessDecision(task, decision, store.list(taskId));
+      if (preActionGovernance && preActionGovernance.action !== "continue") {
+        store.append(taskId, "governance_decision", { phase: "decision", decision: preActionGovernance });
+      }
+
       if (decision.status === "needs_human" && !decision.next_action) {
-        store.append(taskId, "task_failed", { reason: "Model requested human input without a supported action." });
-        return finish("failed");
+        store.append(taskId, "task_stopped_by_human", { reason: "Model requested human input." });
+        return finish("stopped_by_human");
       }
 
       if (decision.status === "final") {
@@ -123,6 +131,12 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
           return finish("completed", decision.final_answer);
         }
         store.append(taskId, "final_rejected", { feedback: finalEval.feedback });
+        const finalGovernance = governance.assessFinalRejection(task, finalEval, store.list(taskId));
+        store.append(taskId, "governance_decision", { phase: "final", decision: finalGovernance });
+        if (finalGovernance.action === "abandon") {
+          store.append(taskId, "task_abandoned", { reason: finalGovernance.reason });
+          return finish("abandoned");
+        }
         continue;
       }
 
@@ -145,7 +159,7 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
         return finish("failed");
       }
 
-      if (decision.requires_human_approval || registry.requiresApproval(action.tool)) {
+      if (preActionGovernance?.action === "escalate" || decision.requires_human_approval || registry.requiresApproval(action.tool)) {
         store.append(taskId, "approval_requested", { decision });
         const approval = await approvalManager.request(decision, task);
         store.append(taskId, "approval_result", { approval });
@@ -170,11 +184,28 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
         criteria: task.quality
       });
       if (stepEval.gate === "stop") {
-        store.append(taskId, "task_failed", { reason: stepEval.feedback, action });
+        const stepGovernance = governance.assessStep(task, result, stepEval, store.list(taskId));
+        store.append(taskId, "governance_decision", { phase: "step", decision: stepGovernance });
+        store.append(taskId, "task_failed", { reason: stepGovernance.reason, action });
+        return finish("failed");
+      }
+
+      const stepGovernance = governance.assessStep(task, result, stepEval, store.list(taskId));
+      if (stepGovernance.action !== "continue") {
+        store.append(taskId, "governance_decision", { phase: "step", decision: stepGovernance });
+      }
+      if (stepGovernance.action === "abandon") {
+        store.append(taskId, "task_abandoned", { reason: stepGovernance.reason, action });
+        return finish("abandoned");
+      }
+      if (stepGovernance.action === "stop") {
+        store.append(taskId, "task_failed", { reason: stepGovernance.reason, action });
         return finish("failed");
       }
     }
 
+    const budgetGovernance = governance.assessBudgetExceeded(task, store.list(taskId));
+    store.append(taskId, "governance_decision", { phase: "budget", decision: budgetGovernance });
     store.append(taskId, "budget_exceeded", { maxIterations: task.budget.maxIterations });
     return finish("budget_exceeded");
   } finally {

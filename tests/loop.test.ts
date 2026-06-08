@@ -32,6 +32,8 @@ describe("agent loop", () => {
       expect(result.events.map((event) => event.type)).toContain("approval_requested");
       expect(result.events.map((event) => event.type)).toContain("loop_eval");
       expect(result.events.map((event) => event.type)).toContain("quality_eval");
+      expect(result.events.map((event) => event.type)).toContain("governance_decision");
+      expect(JSON.stringify(result.events)).toContain('"action":"recover"');
       expect(readFileSync(join(workspace, "src", "validatePassword.js"), "utf8")).toContain(
         "password.trim().length > 0"
       );
@@ -180,10 +182,12 @@ describe("agent loop", () => {
         { model: prematureFinalModel }
       );
 
-      expect(result.status).toBe("budget_exceeded");
+      expect(result.status).toBe("abandoned");
       expect(result.events.map((event) => event.type)).toContain("quality_eval");
       expect(result.events.map((event) => event.type)).toContain("final_rejected");
+      expect(result.events.map((event) => event.type)).toContain("governance_decision");
       expect(JSON.stringify(result.events)).toContain("no tool evidence");
+      expect(JSON.stringify(result.events)).toContain("Mission abandoned");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -251,7 +255,7 @@ describe("agent loop", () => {
         { model: lowConfidenceModel }
       );
 
-      expect(result.status).toBe("budget_exceeded");
+      expect(result.status).toBe("abandoned");
       expect(result.events.map((event) => event.type)).toContain("final_rejected");
       expect(JSON.stringify(result.events)).toContain("confidence 0.1 is below 0.6");
     } finally {
@@ -345,7 +349,7 @@ describe("agent loop", () => {
         { model: finalAfterTestsModel }
       );
 
-      expect(result.status).toBe("budget_exceeded");
+      expect(result.status).toBe("abandoned");
       expect(result.events.map((event) => event.type)).toContain("final_rejected");
       expect(JSON.stringify(result.events)).toContain("no configured typecheck run was recorded");
     } finally {
@@ -398,6 +402,56 @@ describe("agent loop", () => {
       expect(result.status).toBe("failed");
       expect(JSON.stringify(loopEval?.payload)).toContain('"gate":"stop"');
       expect(JSON.stringify(loopEval?.payload)).toContain("Only the configured test command is allowed");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("governance escalates high-risk actions before execution", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const highRiskModel: ModelAdapter = {
+      provider: "test",
+      model: "high-risk",
+      async generate(request) {
+        return {
+          provider: "test",
+          model: "high-risk",
+          raw: {
+            status: "continue",
+            summary: "Run a high-risk verifier action.",
+            next_action: {
+              type: "tool_call",
+              tool: "repo.run_tests",
+              args: { command: request.task.testCommand }
+            },
+            confidence: 0.8,
+            risk: "high",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Escalate high-risk decisions",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "deny",
+          budget: { maxIterations: 3 }
+        },
+        { model: highRiskModel }
+      );
+
+      expect(result.status).toBe("stopped_by_human");
+      expect(result.events.map((event) => event.type)).toContain("governance_decision");
+      expect(JSON.stringify(result.events)).toContain('"action":"escalate"');
+      expect(result.events.map((event) => event.type)).toContain("approval_requested");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

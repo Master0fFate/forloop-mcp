@@ -6,17 +6,19 @@
 
 ForLoop MCP is an implementation of that shift: a local MCP server and loop runtime that lets an AI harness move from one-shot prompting to controlled execution.
 
-Point your harness at a repository, give it a test command, optionally add a typecheck command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, quality evals, and a deterministic runtime that can drive a task until verifier checks pass or the budget runs out.
+Point your harness at a repository, give it a test command, optionally add a typecheck command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, quality evals, governance decisions, and a deterministic runtime that can drive a task until verifier checks pass, escalation is required, or the mission is no longer worth pursuing.
 
-It separates the system into three explicit layers:
+It separates the system into four explicit layers:
 
 ```text
 Skill.md = reusable task knowledge
 MCP server = tools and external capabilities
-Orchestrator = control flow, state, evaluation, retries, and approvals
+Quality = verifier checks and evidence gates
+Governance = stop, escalate, recover, and abandon decisions
+Orchestrator = control flow, state, retries, approvals, and traceability
 ```
 
-This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, quality gates, final evals, traces, and a demo repo.
+This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, quality gates, governance gates, final evals, traces, and a demo repo.
 
 ## Quick Start
 
@@ -194,7 +196,9 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-com
 - Every tool result is scored by a loop eval gate before the next iteration.
 - Final answers are rejected by default unless the loop gathered tool evidence and recorded a passing configured test run.
 - If `quality.requireTypecheckPassed` is enabled, final answers also require a passing configured typecheck run.
-- Every model response, tool call, tool result, approval, and evaluator result is persisted.
+- High-risk decisions are escalated before execution by default.
+- Repeated failed steps, repeated rejected finals, and exhausted recovery attempts can abandon the mission instead of burning the whole budget.
+- Every model response, tool call, tool result, approval, evaluator result, and governance decision is persisted.
 - Missing workspaces, missing skills, model failures, repeated actions, invalid model output, denied approvals, and budget exhaustion resolve to explicit task states instead of silent crashes.
 
 ## Quality Loop
@@ -216,6 +220,23 @@ Each tool result emits `quality_eval` feedback for the next iteration. Final ans
 
 By default, the verifier is deterministic: registered tool schemas, workspace policy, configured tests, and optional configured typecheck. `minFinalConfidence` exists only as an extra policy knob; it is not treated as proof because it comes from the agent that produced the answer. Model-based quality review should use a separate verifier model or subagent with a different system prompt.
 
+## Governance
+
+A loop answers “how does the work continue?” Governance answers “should it continue at all?”
+
+ForLoop makes that decision explicit through the task `governance` block:
+
+```yaml
+governance:
+  escalateHighRisk: true
+  recoverOnFailedStep: true
+  maxRecoveryAttempts: 3
+  maxFinalRejections: 2
+  maxConsecutiveFailedSteps: 3
+```
+
+Governance emits `governance_decision` events with one of five actions: `continue`, `recover`, `escalate`, `stop`, or `abandon`. `abandon` is a first-class task outcome for missions that repeatedly fail quality gates or consume their recovery budget.
+
 ## Current Scope
 
 Implemented now:
@@ -227,7 +248,7 @@ Implemented now:
 - SQLite trace store
 - Repo tool registry
 - MCP stdio server exposing repo tools
-- Deterministic loop, quality, and final evaluator
+- Deterministic loop, quality, governance, and final evaluator
 - Demo fixture
 - Unit, integration, and smoke tests
 

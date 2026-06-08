@@ -12,10 +12,11 @@ User goal
   -> approval policy
   -> repo tool registry / MCP server
   -> deterministic loop eval / quality eval / final eval
+  -> deterministic governance decision
   -> SQLite event trace
 ```
 
-The orchestrator owns budgets, validation, approvals, quality gates, stop conditions, and state. The model only proposes a JSON decision.
+The orchestrator owns budgets, validation, approvals, quality gates, governance decisions, stop conditions, and state. The model only proposes a JSON decision.
 
 ## Boundaries
 
@@ -73,6 +74,23 @@ quality:
 Rejected final answers produce `final_rejected` plus `quality_eval` events. Those events become part of the next model request, so quality feedback is fed back into the loop instead of living only in logs.
 
 The default verifier is deterministic: schemas, workspace policy, configured tests, and optional configured typecheck. Self-reported confidence is not proof; `minFinalConfidence` is only an optional policy threshold. If quality review is model-based, it must come from a separate verifier model or a subagent with a different system prompt, otherwise it is the same agent rubber-stamping itself.
+
+## Governance Layer
+
+An execution loop decides how the work continues. Governance decides whether it should continue.
+
+The task `governance` block defines the operating policy:
+
+```yaml
+governance:
+  escalateHighRisk: true
+  recoverOnFailedStep: true
+  maxRecoveryAttempts: 3
+  maxFinalRejections: 2
+  maxConsecutiveFailedSteps: 3
+```
+
+The deterministic governance layer emits `governance_decision` events with `continue`, `recover`, `escalate`, `stop`, or `abandon`. High-risk decisions can be escalated before execution. Failed steps can enter recovery. Repeated rejected finals or exhausted recovery attempts can abandon the mission instead of letting the loop burn the rest of the budget.
 
 ## Edge-Case Resilience
 

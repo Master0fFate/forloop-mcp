@@ -10,5 +10,11 @@ quality:
   requireEvidenceBeforeFinal: true
   requireTestsPassed: true
   requireTypecheckPassed: false
+governance:
+  escalateHighRisk: true
+  recoverOnFailedStep: true
+  maxRecoveryAttempts: 3
+  maxFinalRejections: 2
+  maxConsecutiveFailedSteps: 3
 budget:
   maxIterations: 8

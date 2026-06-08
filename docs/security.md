@@ -10,7 +10,10 @@ ForLoop MCP is safe by default for local development workflows.
 - Mutating tools require approval.
 - Direct MCP mutations are disabled by default and require `--allow-mutations`.
 - Test execution is limited to the configured command.
-- Every action is written to the trace database.
+- Typecheck execution is limited to the configured command, when one is configured.
+- High-risk decisions are escalated before execution by default.
+- Governance can abandon repeated failures instead of continuing unbounded recovery.
+- Every action, evaluator result, and governance decision is written to the trace database.
 
 ## Approval Modes
 

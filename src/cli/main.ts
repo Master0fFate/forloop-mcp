@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name("forloop")
   .description("Model-agnostic agent loop runtime with MCP repo tools.")
-  .version("0.1.4");
+  .version("0.1.5");
 
 program
   .command("init")
@@ -37,6 +37,13 @@ program
         requireEvidenceBeforeFinal: true,
         requireTestsPassed: true,
         requireTypecheckPassed: false
+      },
+      governance: {
+        escalateHighRisk: true,
+        recoverOnFailedStep: true,
+        maxRecoveryAttempts: 3,
+        maxFinalRejections: 2,
+        maxConsecutiveFailedSteps: 3
       },
       budget: { maxIterations: 8 }
     });

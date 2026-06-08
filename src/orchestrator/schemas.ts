@@ -28,6 +28,22 @@ export const QualityConfigSchema = z.object({
 
 export type QualityConfig = z.infer<typeof QualityConfigSchema>;
 
+export const GovernanceConfigSchema = z.object({
+  escalateHighRisk: z.boolean().default(true),
+  recoverOnFailedStep: z.boolean().default(true),
+  maxRecoveryAttempts: z.coerce.number().int().nonnegative().default(3),
+  maxFinalRejections: z.coerce.number().int().positive().default(2),
+  maxConsecutiveFailedSteps: z.coerce.number().int().positive().default(3)
+}).default({
+  escalateHighRisk: true,
+  recoverOnFailedStep: true,
+  maxRecoveryAttempts: 3,
+  maxFinalRejections: 2,
+  maxConsecutiveFailedSteps: 3
+});
+
+export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
+
 export const ApprovalModeSchema = z.enum(["manual", "auto", "deny"]);
 
 export const TaskInputSchema = z.object({
@@ -40,6 +56,7 @@ export const TaskInputSchema = z.object({
   approvalMode: ApprovalModeSchema.default("manual"),
   traceDbPath: z.string().optional(),
   quality: QualityConfigSchema,
+  governance: GovernanceConfigSchema,
   budget: BudgetConfigSchema
 });
 
@@ -114,6 +131,16 @@ export const StepEvaluationResultSchema = EvaluationResultSchema.extend({
 
 export type StepEvaluationResult = z.infer<typeof StepEvaluationResultSchema>;
 
+export const GovernanceActionSchema = z.enum(["continue", "recover", "escalate", "stop", "abandon"]);
+
+export const GovernanceDecisionResultSchema = z.object({
+  action: GovernanceActionSchema,
+  reason: z.string(),
+  metrics: z.record(z.string(), z.unknown()).default({})
+});
+
+export type GovernanceDecisionResult = z.infer<typeof GovernanceDecisionResultSchema>;
+
 export const TaskEventSchema = z.object({
   id: z.string(),
   taskId: z.string(),
@@ -126,7 +153,7 @@ export type TaskEvent = z.infer<typeof TaskEventSchema>;
 
 export const TaskResultSchema = z.object({
   taskId: z.string(),
-  status: z.enum(["completed", "failed", "budget_exceeded", "stopped_by_human"]),
+  status: z.enum(["completed", "failed", "budget_exceeded", "stopped_by_human", "abandoned"]),
   finalAnswer: z.string().optional(),
   events: z.array(TaskEventSchema),
   traceDbPath: z.string()

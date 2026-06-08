@@ -4,6 +4,9 @@ export {
   ApprovalModeSchema,
   BudgetConfigSchema,
   EvaluationResultSchema,
+  GovernanceActionSchema,
+  GovernanceConfigSchema,
+  GovernanceDecisionResultSchema,
   QualityConfigSchema,
   StepEvaluationResultSchema,
   TaskEventSchema,
@@ -15,6 +18,8 @@ export {
   type ApprovalResult,
   type BudgetConfig,
   type EvaluationResult,
+  type GovernanceConfig,
+  type GovernanceDecisionResult,
   type QualityConfig,
   type StepEvaluationResult,
   type TaskEvent,
@@ -24,6 +29,7 @@ export {
   type ToolResult
 } from "./orchestrator/schemas.js";
 export { parseAgentDecision } from "./orchestrator/decision.js";
+export { DeterministicGovernance } from "./orchestrator/governance.js";
 export { PolicyApprovalManager, type ApprovalManager } from "./orchestrator/approval.js";
 export { DeterministicEvaluator } from "./orchestrator/evaluator.js";
 export { createModelAdapter } from "./models/router.js";
