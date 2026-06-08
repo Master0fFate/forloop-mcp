@@ -52,6 +52,26 @@ Before the npm package is published, install from GitHub:
 npx -y github:Master0fFate/forloop-mcp --workspace /absolute/path/to/repo --test-command "npm test"
 ```
 
+GitHub MCP harness config before npm publication:
+
+```json
+{
+  "mcpServers": {
+    "forloop-repo": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "github:Master0fFate/forloop-mcp",
+        "--workspace",
+        "/absolute/path/to/repo",
+        "--test-command",
+        "npm test"
+      ]
+    }
+  }
+}
+```
+
 Install dependencies:
 
 ```bash

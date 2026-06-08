@@ -89,6 +89,26 @@ Before the npm package is published, the GitHub install form works too:
 npx -y github:Master0fFate/forloop-mcp --workspace /absolute/path/to/repo --test-command "npm test"
 ```
 
+For MCP harness JSON before npm publication:
+
+```json
+{
+  "mcpServers": {
+    "forloop-repo": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "github:Master0fFate/forloop-mcp",
+        "--workspace",
+        "/absolute/path/to/repo",
+        "--test-command",
+        "npm test"
+      ]
+    }
+  }
+}
+```
+
 ```bash
 npm install
 npm run build
