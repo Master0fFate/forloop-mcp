@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseAgentDecision } from "./decision.js";
 import { DeterministicEvaluator } from "./evaluator.js";
 import { PolicyApprovalManager, type ApprovalManager } from "./approval.js";
 import { TaskInputSchema, type TaskEvent, type TaskInput, type TaskResult } from "./schemas.js";
-import type { ModelAdapter } from "../models/base.js";
+import type { ModelAdapter, ModelResponse } from "../models/base.js";
 import { createModelAdapter } from "../models/router.js";
-import { defaultSkillsDir, SkillLoader } from "../skills/loader.js";
+import { defaultSkillsDir, SkillLoader, type LoadedSkill } from "../skills/loader.js";
 import { SQLiteStateStore } from "../storage/sqlite.js";
 import { RepoTools } from "../tools/repo.js";
 import { RepoToolRegistry } from "../tools/registry.js";
@@ -22,8 +23,9 @@ export interface RunAgentLoopOptions {
 export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions = {}): Promise<TaskResult> {
   const task = TaskInputSchema.parse(input);
   const workspace = resolve(task.workspace);
-  const traceDbPath = resolve(task.traceDbPath ?? join(workspace, ".forloop", "state.sqlite"));
   const taskId = randomUUID();
+  const workspaceStatus = inspectWorkspace(workspace);
+  const traceDbPath = chooseTraceDbPath(task, workspace, taskId, workspaceStatus);
   const store = options.stateStore ?? (await SQLiteStateStore.open(traceDbPath));
   const shouldCloseStore = !options.stateStore;
   const skillLoader = new SkillLoader(options.skillsDir ?? defaultSkillsDir(process.cwd()));
@@ -34,14 +36,22 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   const evaluator = new DeterministicEvaluator();
 
   try {
-    store.append(taskId, "task_created", { task: { ...task, workspace } });
+    store.append(taskId, "task_created", { task: { ...task, workspace }, traceDbPath });
 
-    if (!existsSync(workspace)) {
-      store.append(taskId, "task_failed", { reason: `Workspace does not exist: ${workspace}` });
+    if (!workspaceStatus.ok) {
+      store.append(taskId, "task_failed", { reason: workspaceStatus.reason });
       return finish("failed");
     }
 
-    const skill = await skillLoader.load(task.skill);
+    let skill: LoadedSkill;
+    try {
+      skill = await skillLoader.load(task.skill);
+    } catch (error) {
+      store.append(taskId, "skill_load_failed", { error: errorMessage(error), skill: task.skill });
+      store.append(taskId, "task_failed", { reason: `Skill could not be loaded: ${task.skill}` });
+      return finish("failed");
+    }
+
     store.append(taskId, "skill_loaded", { name: skill.name, path: skill.path });
     store.append(taskId, "model_selected", { provider: model.provider, model: model.model });
     store.append(taskId, "tools_loaded", { tools: registry.describe().map((tool) => tool.name) });
@@ -53,13 +63,21 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       const events = store.list(taskId);
       store.append(taskId, "iteration_started", { iteration });
 
-      const response = await model.generate({
-        task,
-        skill,
-        tools: registry.describe(),
-        events,
-        stateSummary: summarizeEvents(events)
-      });
+      let response: ModelResponse;
+      try {
+        response = await model.generate({
+          task,
+          skill,
+          tools: registry.describe(),
+          events,
+          stateSummary: summarizeEvents(events)
+        });
+      } catch (error) {
+        store.append(taskId, "model_error", { provider: model.provider, model: model.model, error: errorMessage(error) });
+        store.append(taskId, "task_failed", { reason: "Model execution failed." });
+        return finish("failed");
+      }
+
       store.append(taskId, "model_response", {
         provider: response.provider,
         model: response.model,
@@ -167,4 +185,45 @@ function summarizeEvents(events: TaskEvent[]): string {
     .slice(-10)
     .map((event) => `${event.type}: ${JSON.stringify(event.payload).slice(0, 500)}`)
     .join("\n");
+}
+
+type WorkspaceStatus = { ok: true } | { ok: false; reason: string };
+
+function inspectWorkspace(workspace: string): WorkspaceStatus {
+  if (!existsSync(workspace)) {
+    return { ok: false, reason: `Workspace does not exist: ${workspace}` };
+  }
+
+  try {
+    if (!statSync(workspace).isDirectory()) {
+      return { ok: false, reason: `Workspace is not a directory: ${workspace}` };
+    }
+  } catch (error) {
+    return { ok: false, reason: `Workspace could not be inspected: ${errorMessage(error)}` };
+  }
+
+  return { ok: true };
+}
+
+function chooseTraceDbPath(
+  task: TaskInput,
+  workspace: string,
+  taskId: string,
+  workspaceStatus: WorkspaceStatus
+): string {
+  const requestedTraceDbPath = resolve(task.traceDbPath ?? join(workspace, ".forloop", "state.sqlite"));
+  if (workspaceStatus.ok || (task.traceDbPath && !isInside(workspace, requestedTraceDbPath))) {
+    return requestedTraceDbPath;
+  }
+
+  return join(tmpdir(), "forloop", `${taskId}.sqlite`);
+}
+
+function isInside(base: string, target: string): boolean {
+  const targetRelativeToBase = relative(base, target);
+  return targetRelativeToBase === "" || (!targetRelativeToBase.startsWith("..") && !isAbsolute(targetRelativeToBase));
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -186,6 +186,7 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test"
 - File paths are sandboxed to the selected workspace.
 - Every tool result is scored by a loop eval gate before the next iteration.
 - Every model response, tool call, tool result, approval, and evaluator result is persisted.
+- Missing workspaces, missing skills, model failures, repeated actions, invalid model output, denied approvals, and budget exhaustion resolve to explicit task states instead of silent crashes.
 
 ## Current Scope
 

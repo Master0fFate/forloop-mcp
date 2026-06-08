@@ -54,3 +54,7 @@ Task state is append-only. Each event is stored in SQLite as JSON payload with a
 Every executed tool result receives a `loop_eval` event before the next model iteration. The eval layer turns tool output into structured feedback, scores step quality, and can stop the task when a proposed action violates a hard policy boundary such as escaping the workspace or running a command other than the configured test command.
 
 Final answers pass through a separate final evaluator. The final gate rejects empty answers and rejects completion when the latest configured test run failed.
+
+## Edge-Case Resilience
+
+The runtime treats common failure modes as explicit task states. Missing or invalid workspaces fail without creating the requested workspace. Missing skills and model exceptions are persisted as task events. Invalid model output, repeated actions, denied approvals, failed eval gates, and budget exhaustion all stop through named events so the next run can inspect what broke.

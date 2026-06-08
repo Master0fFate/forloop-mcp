@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -75,6 +75,68 @@ describe("agent loop", () => {
       });
 
       expect(result.status).toBe("budget_exceeded");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("fails missing workspaces without creating them", async () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "forloop-test-"));
+    const workspace = join(tempRoot, "missing-workspace");
+    let traceDbPath: string | undefined;
+
+    try {
+      const result = await runAgentLoop({
+        goal: "Fix a missing project",
+        workspace,
+        skill: "repo-debugging",
+        model: "mock",
+        testCommand: "npm test",
+        approvalMode: "auto",
+        budget: { maxIterations: 8 }
+      });
+      traceDbPath = result.traceDbPath;
+
+      expect(result.status).toBe("failed");
+      expect(existsSync(workspace)).toBe(false);
+      expect(JSON.stringify(result.events)).toContain("Workspace does not exist");
+    } finally {
+      if (traceDbPath) {
+        rmSync(traceDbPath, { force: true });
+      }
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("records model failures as failed task events", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const failingModel: ModelAdapter = {
+      provider: "test",
+      model: "throws",
+      async generate() {
+        throw new Error("model edge case");
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Handle model failures",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "auto",
+          budget: { maxIterations: 8 }
+        },
+        { model: failingModel }
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.events.map((event) => event.type)).toContain("model_error");
+      expect(JSON.stringify(result.events)).toContain("model edge case");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
