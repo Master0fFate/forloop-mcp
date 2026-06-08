@@ -4,5 +4,10 @@ skill: repo-debugging
 model: mock
 testCommand: npm test
 approvalMode: auto
+quality:
+  minStepScore: 0.2
+  minFinalConfidence: 0.6
+  requireEvidenceBeforeFinal: true
+  requireTestsPassed: true
 budget:
   maxIterations: 8

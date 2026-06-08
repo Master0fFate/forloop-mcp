@@ -31,6 +31,7 @@ describe("agent loop", () => {
       expect(result.status).toBe("completed");
       expect(result.events.map((event) => event.type)).toContain("approval_requested");
       expect(result.events.map((event) => event.type)).toContain("loop_eval");
+      expect(result.events.map((event) => event.type)).toContain("quality_eval");
       expect(readFileSync(join(workspace, "src", "validatePassword.js"), "utf8")).toContain(
         "password.trim().length > 0"
       );
@@ -137,6 +138,121 @@ describe("agent loop", () => {
       expect(result.status).toBe("failed");
       expect(result.events.map((event) => event.type)).toContain("model_error");
       expect(JSON.stringify(result.events)).toContain("model edge case");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("quality loop rejects premature finals without evidence", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const prematureFinalModel: ModelAdapter = {
+      provider: "test",
+      model: "premature-final",
+      async generate() {
+        return {
+          provider: "test",
+          model: "premature-final",
+          raw: {
+            status: "final",
+            summary: "Claim done without inspecting or testing anything.",
+            final_answer: "Done.",
+            confidence: 0.9,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Do not accept unsupported completion claims",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "auto",
+          budget: { maxIterations: 2 }
+        },
+        { model: prematureFinalModel }
+      );
+
+      expect(result.status).toBe("budget_exceeded");
+      expect(result.events.map((event) => event.type)).toContain("quality_eval");
+      expect(result.events.map((event) => event.type)).toContain("final_rejected");
+      expect(JSON.stringify(result.events)).toContain("no tool evidence");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("quality loop rejects low-confidence finals", async () => {
+    const { tempRoot, workspace } = copyFixture();
+    const lowConfidenceModel: ModelAdapter = {
+      provider: "test",
+      model: "low-confidence-final",
+      async generate(request) {
+        const hasRunTests = request.events.some((event) => {
+          const payload = event.payload as { result?: { tool?: string } };
+          return event.type === "tool_result" && payload.result?.tool === "repo.run_tests";
+        });
+
+        if (!hasRunTests) {
+          return {
+            provider: "test",
+            model: "low-confidence-final",
+            raw: {
+              status: "continue",
+              summary: "Gather test evidence first.",
+              next_action: {
+                type: "tool_call",
+                tool: "repo.run_tests",
+                args: { command: request.task.testCommand }
+              },
+              confidence: 0.8,
+              risk: "low",
+              requires_human_approval: false
+            }
+          };
+        }
+
+        return {
+          provider: "test",
+          model: "low-confidence-final",
+          raw: {
+            status: "final",
+            summary: "Weakly claim done.",
+            final_answer: "Probably done.",
+            confidence: 0.1,
+            risk: "low",
+            requires_human_approval: false
+          }
+        };
+      },
+      supportsTools: () => true,
+      supportsJsonMode: () => true
+    };
+
+    try {
+      const result = await runAgentLoop(
+        {
+          goal: "Reject low-confidence completions",
+          workspace,
+          skill: "repo-debugging",
+          model: "mock",
+          testCommand: "npm test",
+          approvalMode: "auto",
+          budget: { maxIterations: 3 }
+        },
+        { model: lowConfidenceModel }
+      );
+
+      expect(result.status).toBe("budget_exceeded");
+      expect(result.events.map((event) => event.type)).toContain("final_rejected");
+      expect(JSON.stringify(result.events)).toContain("confidence 0.1 is below 0.6");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

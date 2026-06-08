@@ -12,6 +12,20 @@ export const BudgetConfigSchema = z.object({
 
 export type BudgetConfig = z.infer<typeof BudgetConfigSchema>;
 
+export const QualityConfigSchema = z.object({
+  minStepScore: z.coerce.number().min(0).max(1).default(0.2),
+  minFinalConfidence: z.coerce.number().min(0).max(1).default(0.6),
+  requireEvidenceBeforeFinal: z.boolean().default(true),
+  requireTestsPassed: z.boolean().default(true)
+}).default({
+  minStepScore: 0.2,
+  minFinalConfidence: 0.6,
+  requireEvidenceBeforeFinal: true,
+  requireTestsPassed: true
+});
+
+export type QualityConfig = z.infer<typeof QualityConfigSchema>;
+
 export const ApprovalModeSchema = z.enum(["manual", "auto", "deny"]);
 
 export const TaskInputSchema = z.object({
@@ -22,6 +36,7 @@ export const TaskInputSchema = z.object({
   testCommand: z.string().min(1).default("npm test"),
   approvalMode: ApprovalModeSchema.default("manual"),
   traceDbPath: z.string().optional(),
+  quality: QualityConfigSchema,
   budget: BudgetConfigSchema
 });
 

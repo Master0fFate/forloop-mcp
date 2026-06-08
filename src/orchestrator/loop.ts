@@ -110,8 +110,9 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       }
 
       if (decision.status === "final") {
-        const finalEval = evaluator.evaluateFinal(decision, store.list(taskId));
+        const finalEval = evaluator.evaluateFinal(task, decision, store.list(taskId));
         store.append(taskId, "final_eval", { evaluation: finalEval });
+        store.append(taskId, "quality_eval", { phase: "final", evaluation: finalEval, criteria: task.quality });
         if (finalEval.pass) {
           store.append(taskId, "task_completed", { finalAnswer: decision.final_answer });
           return finish("completed", decision.final_answer);
@@ -153,8 +154,9 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       const result = await registry.call(action);
       store.append(taskId, "tool_result", { result });
 
-      const stepEval = evaluator.evaluateStep(decision, result, store.list(taskId));
+      const stepEval = evaluator.evaluateStep(task, decision, result, store.list(taskId));
       store.append(taskId, "loop_eval", { iteration, action, evaluation: stepEval });
+      store.append(taskId, "quality_eval", { phase: "step", iteration, action, evaluation: stepEval, criteria: task.quality });
       if (stepEval.gate === "stop") {
         store.append(taskId, "task_failed", { reason: stepEval.feedback, action });
         return finish("failed");

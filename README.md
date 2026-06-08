@@ -6,7 +6,7 @@
 
 ForLoop MCP is an implementation of that shift: a local MCP server and loop runtime that lets an AI harness move from one-shot prompting to controlled execution.
 
-Point your harness at a repository, give it a test command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, and a deterministic runtime that can drive a task until tests pass or the budget runs out.
+Point your harness at a repository, give it a test command, and ForLoop exposes repo tools, traceable state, approval gates, loop evals, quality evals, and a deterministic runtime that can drive a task until tests pass or the budget runs out.
 
 It separates the system into three explicit layers:
 
@@ -16,7 +16,7 @@ MCP server = tools and external capabilities
 Orchestrator = control flow, state, evaluation, retries, and approvals
 ```
 
-This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, final evals, traces, and a demo repo.
+This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, quality gates, final evals, traces, and a demo repo.
 
 ## Quick Start
 
@@ -185,8 +185,25 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test"
 - `repo.run_tests` can only run the configured test command.
 - File paths are sandboxed to the selected workspace.
 - Every tool result is scored by a loop eval gate before the next iteration.
+- Final answers are rejected by default unless the loop gathered tool evidence, met minimum confidence, and recorded a passing configured test run.
 - Every model response, tool call, tool result, approval, and evaluator result is persisted.
 - Missing workspaces, missing skills, model failures, repeated actions, invalid model output, denied approvals, and budget exhaustion resolve to explicit task states instead of silent crashes.
+
+## Quality Loop
+
+Execution loops answer “what action should run next?” Quality loops answer “is this good enough to ship?”
+
+ForLoop makes that second loop explicit through the task `quality` block:
+
+```yaml
+quality:
+  minStepScore: 0.2
+  minFinalConfidence: 0.6
+  requireEvidenceBeforeFinal: true
+  requireTestsPassed: true
+```
+
+Each tool result emits `quality_eval` feedback for the next iteration. Final answers that do not clear the quality gate are rejected and fed back into the loop instead of being shipped as weak completion claims.
 
 ## Current Scope
 
@@ -199,7 +216,7 @@ Implemented now:
 - SQLite trace store
 - Repo tool registry
 - MCP stdio server exposing repo tools
-- Deterministic loop and final evaluator
+- Deterministic loop, quality, and final evaluator
 - Demo fixture
 - Unit, integration, and smoke tests
 
