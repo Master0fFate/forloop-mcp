@@ -50,7 +50,7 @@ Every model output must be a valid JSON decision:
 
 ## Persistence
 
-Task state is append-only. Each event is stored in SQLite as JSON payload with a task id, timestamp, and event type. This makes runs inspectable and exportable.
+Task state is append-only. Each event is stored in SQLite as JSON payload with a task id, timestamp, and event type. Trace databases are isolated per session under a `sessions/<session-storage-name>/` directory. The default location is `.forloop/sessions/<session-storage-name>/state.sqlite`; explicit `traceDbPath` values choose the base directory and file name, then ForLoop still inserts the per-session directory. This makes runs inspectable and exportable without allowing separate Codex sessions to share one trace database.
 
 ## Eval Layer
 

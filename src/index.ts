@@ -41,6 +41,7 @@ export {
 export { parseAgentDecision } from "./orchestrator/decision.js";
 export { DeterministicGovernance } from "./orchestrator/governance.js";
 export { DeterministicSecurityGate } from "./orchestrator/security.js";
+export { resolveSessionIdentity, type SessionIdentity } from "./orchestrator/session.js";
 export { PolicyApprovalManager, type ApprovalManager } from "./orchestrator/approval.js";
 export { DeterministicEvaluator } from "./orchestrator/evaluator.js";
 export { createModelAdapter } from "./models/router.js";

@@ -33,6 +33,8 @@ Claude Code CLI:
 claude mcp add --transport stdio forloopRepo -- npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
 ```
 
+For per-session isolation, pass `--session-id` only when your host provides an actually expanded stable value for the current session. ForLoop also checks `FORLOOP_SESSION_ID`, `CODEX_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_CONVERSATION_ID`, `CLAUDECODE_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, and `MCP_SESSION_ID`. Without one, it creates an ephemeral unique namespace for that process.
+
 VS Code `.vscode/mcp.json`:
 
 ```json
@@ -183,13 +185,13 @@ npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test"
 Inspect the trace:
 
 ```bash
-npm run dev -- inspect --trace-db examples/buggy-auth-service/.forloop/state.sqlite
+npm run dev -- inspect --trace-db examples/buggy-auth-service/.forloop/sessions/<session-storage-name>/state.sqlite
 ```
 
 Export the latest trace:
 
 ```bash
-npm run dev -- export-trace --trace-db examples/buggy-auth-service/.forloop/state.sqlite --out trace.json
+npm run dev -- export-trace --trace-db examples/buggy-auth-service/.forloop/sessions/<session-storage-name>/state.sqlite --out trace.json
 ```
 
 ## Real Repositories

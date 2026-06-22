@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
 import { parseAgentDecision } from "./decision.js";
 import { DeterministicEvaluator } from "./evaluator.js";
 import { DeterministicGovernance } from "./governance.js";
 import { DeterministicSecurityGate } from "./security.js";
 import { PolicyApprovalManager, type ApprovalManager } from "./approval.js";
-import { TaskInputSchema, type TaskEvent, type TaskInput, type TaskResult } from "./schemas.js";
+import { TaskInputSchema, type TaskInput, type TaskResult } from "./schemas.js";
+import { approximateTokens, createTraceContext, deterministicVerifierMetadata, errorMessage, summarizeEvents } from "./loop-helpers.js";
 import type { ModelAdapter, ModelResponse } from "../models/base.js";
 import { createModelAdapter } from "../models/router.js";
 import { defaultSkillsDir, SkillLoader, type LoadedSkill } from "../skills/loader.js";
@@ -24,10 +22,8 @@ export interface RunAgentLoopOptions {
 
 export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions = {}): Promise<TaskResult> {
   const task = TaskInputSchema.parse(input);
-  const workspace = resolve(task.workspace);
   const taskId = randomUUID();
-  const workspaceStatus = inspectWorkspace(workspace);
-  const traceDbPath = chooseTraceDbPath(task, workspace, taskId, workspaceStatus);
+  const { workspace, session, workspaceStatus, traceDbPath } = createTraceContext(task, taskId);
   const store = options.stateStore ?? (await SQLiteStateStore.open(traceDbPath));
   const shouldCloseStore = !options.stateStore;
   const skillLoader = new SkillLoader(options.skillsDir ?? defaultSkillsDir(process.cwd()));
@@ -40,7 +36,7 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   const security = new DeterministicSecurityGate();
 
   try {
-    store.append(taskId, "task_created", { task: { ...task, workspace }, traceDbPath });
+    store.append(taskId, "task_created", { task: { ...task, workspace, sessionId: session.id }, sessionStorageName: session.storageName, traceDbPath });
 
     if (!workspaceStatus.ok) {
       store.append(taskId, "task_failed", { reason: workspaceStatus.reason });
@@ -271,75 +267,6 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   }
 
   function finish(status: TaskResult["status"], finalAnswer?: string): TaskResult {
-    return {
-      taskId,
-      status,
-      finalAnswer,
-      events: store.list(taskId),
-      traceDbPath
-    };
+    return { taskId, status, finalAnswer, events: store.list(taskId), sessionId: session.id, sessionStorageName: session.storageName, traceDbPath };
   }
-}
-
-function summarizeEvents(events: TaskEvent[]): string {
-  return events
-    .slice(-10)
-    .map((event) => `${event.type}: ${JSON.stringify(event.payload).slice(0, 500)}`)
-    .join("\n");
-}
-
-type WorkspaceStatus = { ok: true } | { ok: false; reason: string };
-
-function inspectWorkspace(workspace: string): WorkspaceStatus {
-  if (!existsSync(workspace)) {
-    return { ok: false, reason: `Workspace does not exist: ${workspace}` };
-  }
-
-  try {
-    if (!statSync(workspace).isDirectory()) {
-      return { ok: false, reason: `Workspace is not a directory: ${workspace}` };
-    }
-  } catch (error) {
-    return { ok: false, reason: `Workspace could not be inspected: ${errorMessage(error)}` };
-  }
-
-  return { ok: true };
-}
-
-function chooseTraceDbPath(
-  task: TaskInput,
-  workspace: string,
-  taskId: string,
-  workspaceStatus: WorkspaceStatus
-): string {
-  const requestedTraceDbPath = resolve(task.traceDbPath ?? join(workspace, ".forloop", "state.sqlite"));
-  if (workspaceStatus.ok || (task.traceDbPath && !isInside(workspace, requestedTraceDbPath))) {
-    return requestedTraceDbPath;
-  }
-
-  return join(tmpdir(), "forloop", `${taskId}.sqlite`);
-}
-
-function isInside(base: string, target: string): boolean {
-  const targetRelativeToBase = relative(base, target);
-  return targetRelativeToBase === "" || (!targetRelativeToBase.startsWith("..") && !isAbsolute(targetRelativeToBase));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function approximateTokens(value: unknown): number {
-  return Math.ceil(JSON.stringify(value).length / 4);
-}
-
-function deterministicVerifierMetadata(task: TaskInput): { kind: "deterministic"; checks: string[] } {
-  const checks = ["tool_schema", "security_policy", "workspace_policy"];
-  if (task.quality.requireTestsPassed) {
-    checks.push("configured_tests");
-  }
-  if (task.quality.requireTypecheckPassed) {
-    checks.push("configured_typecheck");
-  }
-  return { kind: "deterministic", checks };
 }

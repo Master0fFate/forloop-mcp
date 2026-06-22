@@ -61,6 +61,8 @@ Claude Code CLI:
 claude mcp add --transport stdio forloopRepo -- npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
 ```
 
+For per-session isolation, pass `--session-id` only when your host provides an actually expanded stable value for the current session. ForLoop also checks `FORLOOP_SESSION_ID`, `CODEX_SESSION_ID`, `CODEX_THREAD_ID`, `CODEX_CONVERSATION_ID`, `CLAUDECODE_SESSION_ID`, `CLAUDE_CODE_SESSION_ID`, and `MCP_SESSION_ID`. If none are present, it creates an ephemeral unique namespace for that process.
+
 VS Code `.vscode/mcp.json`:
 
 ```json
@@ -188,9 +190,10 @@ npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test"
 npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
 forloop init --workspace ./my-repo
 forloop run --workspace ./my-repo --goal "Fix failing tests" --test-command "npm test" --typecheck-command "npm run typecheck"
-forloop inspect --trace-db ./my-repo/.forloop/state.sqlite
-forloop export-trace --trace-db ./my-repo/.forloop/state.sqlite --out trace.json
-forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-command "npm run typecheck"
+forloop run --workspace ./my-repo --goal "Fix failing tests" --session-id "$CODEX_THREAD_ID"
+forloop inspect --trace-db ./my-repo/.forloop/sessions/<session-storage-name>/state.sqlite
+forloop export-trace --trace-db ./my-repo/.forloop/sessions/<session-storage-name>/state.sqlite --out trace.json
+forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-command "npm run typecheck" --session-id "$CODEX_THREAD_ID"
 ```
 
 ## Safety Defaults
@@ -199,6 +202,7 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-com
 - `repo.apply_patch` requires approval.
 - Direct MCP `repo.apply_patch` calls are denied unless the server is started with `--allow-mutations`.
 - Standalone MCP servers can restrict calls with repeated `--allowed-tool <name>` flags.
+- Default trace storage is isolated under `.forloop/sessions/<session-storage-name>/state.sqlite`.
 - `repo.run_tests` can only run the configured test command.
 - `repo.run_typecheck` can only run the configured typecheck command, when one is configured.
 - File paths are sandboxed to the selected workspace.

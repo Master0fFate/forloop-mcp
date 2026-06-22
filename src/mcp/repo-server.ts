@@ -6,10 +6,12 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { RepoTools } from "../tools/repo.js";
 import type { ToolResult } from "../orchestrator/schemas.js";
+import { resolveSessionIdentity } from "../orchestrator/session.js";
 
 export interface RepoMcpServerOptions {
   allowMutations?: boolean;
   allowedTools?: string[];
+  sessionId?: string;
 }
 
 export async function startRepoMcpServer(
@@ -20,9 +22,10 @@ export async function startRepoMcpServer(
 ): Promise<void> {
   const typecheckCommand = typeof typecheckCommandOrOptions === "string" ? typecheckCommandOrOptions : undefined;
   const resolvedOptions = typeof typecheckCommandOrOptions === "object" ? typecheckCommandOrOptions : options;
+  const session = resolveSessionIdentity(resolvedOptions.sessionId);
   const repoTools = new RepoTools(workspace, testCommand, typecheckCommand);
   const server = new McpServer({
-    name: "forloop-repo-tools",
+    name: `forloop-repo-tools-${session.storageName}`,
     version: "0.1.9"
   });
 
@@ -138,7 +141,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     readArg("typecheck-command"),
     {
       allowMutations: hasFlag("allow-mutations"),
-      allowedTools: readRepeatedArg("allowed-tool")
+      allowedTools: readRepeatedArg("allowed-tool"),
+      sessionId: readArg("session-id")
     }
   );
 }
@@ -228,6 +232,7 @@ Options:
                            Optional command allowed through repo.run_typecheck.
   --allowed-tool <name>    Restrict MCP calls to repeated allowed tool names.
   --allow-mutations        Enable direct MCP repo.apply_patch calls.
+  --session-id <id>        Stable session id for this MCP server instance.
   --help, -h               Show this help text.
 `);
 }

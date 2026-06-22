@@ -16,6 +16,7 @@ ForLoop MCP is safe by default for local development workflows.
 - High-risk decisions are escalated before execution by default.
 - Governance can abandon repeated failures instead of continuing unbounded recovery.
 - Every action, evaluator result, and governance decision is written to the trace database.
+- Default trace storage is per-session under `.forloop/sessions/<session-storage-name>/state.sqlite`.
 
 ## Approval Modes
 

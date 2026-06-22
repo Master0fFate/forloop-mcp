@@ -95,10 +95,11 @@ program
   .option("--model <name>", "Model adapter: mock or openai")
   .option("--test-command <command>", "Configured test command")
   .option("--typecheck-command <command>", "Optional configured typecheck command")
+  .option("--session-id <id>", "Stable session id used to isolate default trace storage")
   .option("--auto-approve", "Approve mutating actions automatically")
   .option("--deny-approval", "Deny mutating actions automatically")
   .option("--max-iterations <count>", "Iteration budget")
-  .option("--trace-db <path>", "SQLite trace database path")
+  .option("--trace-db <path>", "SQLite trace database base path; storage remains session-scoped")
   .option("--skills-dir <path>", "Skills directory")
   .action(async (options) => {
     const task = await loadTask(options);
@@ -163,6 +164,7 @@ program
   .option("--typecheck-command <command>", "Optional configured typecheck command")
   .option("--allowed-tool <name...>", "Restrict MCP calls to allowed tool names")
   .option("--allow-mutations", "Allow direct MCP mutation tools such as repo.apply_patch")
+  .option("--session-id <id>", "Stable session id exposed in this MCP server instance name")
   .action(
     async (options: {
       workspace: string;
@@ -170,10 +172,12 @@ program
       typecheckCommand?: string;
       allowedTool?: string[];
       allowMutations?: boolean;
+      sessionId?: string;
     }) => {
     await startRepoMcpServer(resolve(options.workspace), options.testCommand, options.typecheckCommand, {
       allowedTools: options.allowedTool,
-      allowMutations: options.allowMutations === true
+      allowMutations: options.allowMutations === true,
+      sessionId: options.sessionId
     });
   });
 
@@ -196,6 +200,7 @@ async function loadTask(options: Record<string, unknown>): Promise<TaskInput> {
     testCommand: options.testCommand ?? yamlTask.testCommand,
     typecheckCommand: options.typecheckCommand ?? yamlTask.typecheckCommand,
     approvalMode,
+    sessionId: options.sessionId ?? yamlTask.sessionId,
     traceDbPath: options.traceDb ?? yamlTask.traceDbPath,
     budget: {
       ...(typeof yamlTask.budget === "object" && yamlTask.budget ? yamlTask.budget : {}),

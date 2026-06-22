@@ -101,6 +101,7 @@ export const TaskInputSchema = z.object({
   testCommand: z.string().min(1).default("npm test"),
   typecheckCommand: z.string().min(1).optional(),
   approvalMode: ApprovalModeSchema.default("manual"),
+  sessionId: z.string().min(1).optional(),
   traceDbPath: z.string().optional(),
   quality: QualityConfigSchema,
   governance: GovernanceConfigSchema,
@@ -217,6 +218,8 @@ export const TaskResultSchema = z.object({
   status: z.enum(["completed", "failed", "budget_exceeded", "stopped_by_human", "abandoned"]),
   finalAnswer: z.string().optional(),
   events: z.array(TaskEventSchema),
+  sessionId: z.string(),
+  sessionStorageName: z.string(),
   traceDbPath: z.string()
 });
 
