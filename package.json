@@ -1,6 +1,6 @@
 {
   "name": "forloop-mcp",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Model-agnostic agent loop runtime with MCP repo tools, structured decisions, approvals, evals, and traceable state.",
   "type": "module",
   "author": "Master0fFate",
@@ -92,9 +92,8 @@
   ],
   "files": [
     "dist/src",
+    "!dist/src/**/*.map",
     "skills",
-    "docs",
-    "examples",
     "README.md"
   ],
   "license": "MIT"
