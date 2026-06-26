@@ -20,7 +20,7 @@ Governance = stop, escalate, recover, and abandon decisions
 Orchestrator = control flow, state, retries, approvals, and traceability
 ```
 
-This release ships a stdio MCP repo server plus a CLI orchestrator. The MCP server plugs into AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, explicit criteria, security gates, quality gates, governance gates, final evals, traces, and a demo repo.
+This release ships a stdio MCP repo server, a CLI orchestrator, a local web console, session-scoped memory, governed shell tools, optional cloud scaffolding, and live provider adapters. The stdio MCP server remains the primary install path for AI harnesses. The CLI runs the full model-agnostic loop with skills, model adapters, approvals, per-step evals, explicit criteria, security gates, quality gates, governance gates, final evals, traces, and a demo repo.
 
 ## Quick Start
 
@@ -184,17 +184,55 @@ Direct MCP mutations are disabled by default. Enable them only for trusted clien
 npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test" --allow-mutations
 ```
 
+Start the local web console:
+
+```bash
+forloop web --workspace /absolute/path/to/repo --session-id "$CODEX_THREAD_ID"
+```
+
+The web console runs locally by default at `http://127.0.0.1:4317`. It exposes runtime status, provider config validation, session-scoped memory, shell status, and optional shell execution when explicitly enabled.
+
 ## CLI
 
 ```bash
 npx -y forloop-mcp@latest --workspace /absolute/path/to/repo --test-command "npm test"
 forloop init --workspace ./my-repo
 forloop run --workspace ./my-repo --goal "Fix failing tests" --test-command "npm test" --typecheck-command "npm run typecheck"
+forloop run --workspace ./my-repo --goal "Fix failing tests" --config ./my-repo/.forloop/config.yaml
+forloop web --workspace ./my-repo --port 4317
+forloop memory remember --workspace ./my-repo --session-id "$CODEX_THREAD_ID" --content "Keep this in this session only"
+forloop memory search --workspace ./my-repo --session-id "$CODEX_THREAD_ID" --query "session only"
+forloop shell --workspace ./my-repo --allow-shell --shell-command node --command node --arg -e --arg "console.log(process.cwd())"
 forloop run --workspace ./my-repo --goal "Fix failing tests" --session-id "$CODEX_THREAD_ID"
 forloop inspect --trace-db ./my-repo/.forloop/sessions/<session-storage-name>/state.sqlite
 forloop export-trace --trace-db ./my-repo/.forloop/sessions/<session-storage-name>/state.sqlite --out trace.json
 forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-command "npm run typecheck" --session-id "$CODEX_THREAD_ID"
 ```
+
+## Provider Config
+
+ForLoop supports `mock`, native OpenAI via env vars, OpenAI-compatible HTTP endpoints, OpenRouter, local OpenAI-compatible servers, and Anthropic Messages API configuration. Model IDs are caller-supplied; ForLoop does not maintain a baked-in model list.
+
+The web console includes presets for OpenAI, Anthropic, OpenRouter, Ollama, vLLM, LM Studio, and custom OpenAI-compatible providers. Presets fill the base URL and recommended API key env var; users still paste or type the model ID they want.
+
+`.forloop/config.yaml`:
+
+```yaml
+provider:
+  kind: openai-compatible
+  baseUrl: https://openrouter.ai/api/v1
+  modelId: local-or-provider-model-id
+  apiKeyEnv: OPENROUTER_API_KEY
+  structuredOutput: json_schema
+
+shell:
+  enabled: false
+  allowArbitrary: false
+  allowShellMode: false
+  allowedCommands: []
+```
+
+OpenAI-compatible works for services that expose OpenAI-style chat completions, including OpenAI, OpenRouter, Ollama, vLLM, and LM Studio. Anthropic can be configured with `kind: anthropic`, a Messages API base URL, caller-supplied `modelId`, `structuredOutput: tool_use`, and `apiKeyEnv: ANTHROPIC_API_KEY`. ForLoop validates every provider response against its own `AgentDecision` schema before the orchestrator can act on it.
 
 ## Safety Defaults
 
@@ -203,6 +241,8 @@ forloop mcp-repo --workspace ./my-repo --test-command "npm test" --typecheck-com
 - Direct MCP `repo.apply_patch` calls are denied unless the server is started with `--allow-mutations`.
 - Standalone MCP servers can restrict calls with repeated `--allowed-tool <name>` flags.
 - Default trace storage is isolated under `.forloop/sessions/<session-storage-name>/state.sqlite`.
+- Long-term memory storage is isolated under `.forloop/sessions/<session-storage-name>/memory.sqlite`.
+- `shell.run` is registered for MCP/CLI/UI use but denied until shell tools are explicitly enabled.
 - `repo.run_tests` can only run the configured test command.
 - `repo.run_typecheck` can only run the configured typecheck command, when one is configured.
 - File paths are sandboxed to the selected workspace.
@@ -272,10 +312,16 @@ security:
     - repo.run_tests
     - repo.run_typecheck
     - repo.git_diff
+    - memory.remember
+    - memory.search
+    - memory.list
+    - memory.delete
+    - shell.status
+    - shell.run
   requireApprovalForMutations: true
 ```
 
-Before any tool runs, the deterministic security gate emits `security_eval`. Unknown tools, disallowed tools, workspace escapes, and unconfigured command attempts are denied as policy violations. The wider the loop, the smaller this allowed-tool set should be.
+Before any tool runs, the deterministic security gate emits `security_eval`. Unknown tools, disallowed tools, workspace escapes, disabled shell execution, and unconfigured command attempts are denied as policy violations. The wider the loop, the smaller this allowed-tool set should be.
 
 ## Governance
 
@@ -311,20 +357,16 @@ Implemented now:
 - TypeScript CLI
 - Repo debugging skill
 - Mock model adapter
-- OpenAI adapter boundary stub
+- Live provider adapters for OpenAI-compatible and Anthropic endpoints
 - SQLite trace store
+- Session-isolated long-term memory store
 - Repo tool registry
-- MCP stdio server exposing repo tools
+- Governed shell tools, disabled by default
+- MCP stdio server exposing repo, memory, and shell tools
+- Local dark-mode web console
+- Optional Docker/Compose cloud deployment scaffold
 - Deterministic loop, criteria, security, quality, governance, and final evaluator
 - Demo fixture
 - Unit, integration, and smoke tests
 
-Not included in this MVP:
-
-- Web UI
-- Arbitrary shell tools
-- Long-term memory
-- Cloud deployment
-- Live provider calls
-
-See [docs/architecture.md](docs/architecture.md) and [docs/getting-started.md](docs/getting-started.md).
+See [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), [docs/deployment.md](docs/deployment.md), and [docs/getting-started.md](docs/getting-started.md).

@@ -47,9 +47,22 @@ export { DeterministicEvaluator } from "./orchestrator/evaluator.js";
 export { createModelAdapter } from "./models/router.js";
 export { MockModelAdapter } from "./models/mock.js";
 export { OpenAIAdapter } from "./models/openai.js";
+export {
+  AnthropicMessagesAdapter,
+  OpenAICompatibleChatAdapter,
+  ProviderConfigSchema,
+  createModelAdapterFromConfig,
+  redactProviderConfig,
+  type AnthropicProviderConfig,
+  type OpenAICompatibleProviderConfig,
+  type ProviderConfig
+} from "./models/provider-config.js";
 export type { ModelAdapter, ModelRequest, ModelResponse } from "./models/base.js";
 export { defaultSkillsDir, SkillLoader, type LoadedSkill } from "./skills/loader.js";
 export { SQLiteStateStore } from "./storage/sqlite.js";
+export { SessionMemoryStore, memoryDbPathForSession, type MemoryRecord } from "./memory/store.js";
 export { RepoTools } from "./tools/repo.js";
 export { RepoToolRegistry, type ToolDescription } from "./tools/registry.js";
+export { ShellTools, type ShellPolicy, type ShellRunInput } from "./tools/shell.js";
+export { createForLoopWebServer, type ForLoopWebServer, type ForLoopWebServerOptions } from "./web/server.js";
 export { startRepoMcpServer, type RepoMcpServerOptions } from "./mcp/repo-server.js";

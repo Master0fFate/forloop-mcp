@@ -31,6 +31,8 @@ describe("repo MCP server", () => {
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name)).toContain("repo.read_file");
       expect(listed.tools.map((tool) => tool.name)).toContain("repo.run_typecheck");
+      expect(listed.tools.map((tool) => tool.name)).toContain("memory.remember");
+      expect(listed.tools.map((tool) => tool.name)).toContain("shell.status");
 
       const result = await client.callTool({
         name: "repo.list_files",
@@ -53,6 +55,20 @@ describe("repo MCP server", () => {
       });
       const deniedText = denied.content.find((content) => content.type === "text")?.text ?? "";
       expect(deniedText).toContain("Direct MCP mutations are disabled");
+
+      const remembered = await client.callTool({
+        name: "memory.remember",
+        arguments: { content: "MCP memory is scoped to this session.", tags: ["mcp"] }
+      });
+      expect(remembered.content.find((content) => content.type === "text")?.text ?? "").toContain(
+        "MCP memory is scoped"
+      );
+
+      const shellStatus = await client.callTool({
+        name: "shell.status",
+        arguments: {}
+      });
+      expect(shellStatus.content.find((content) => content.type === "text")?.text ?? "").toContain('"enabled": false');
     } finally {
       await client.close();
       rmSync(tempRoot, { recursive: true, force: true });

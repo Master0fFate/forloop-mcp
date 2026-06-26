@@ -54,7 +54,13 @@ const defaultAllowedTools = [
   "repo.apply_patch",
   "repo.run_tests",
   "repo.run_typecheck",
-  "repo.git_diff"
+  "repo.git_diff",
+  "memory.remember",
+  "memory.search",
+  "memory.list",
+  "memory.delete",
+  "shell.status",
+  "shell.run"
 ];
 
 export const SecurityConfigSchema = z.object({

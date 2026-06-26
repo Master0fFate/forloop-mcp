@@ -1,6 +1,6 @@
 # Architecture
 
-ForLoop MCP implements the architecture from `model_agnostic_agent_loop_conceptualization.md` as a compact MVP.
+ForLoop MCP implements a local-first agent loop runtime with stdio MCP tools, deterministic gates, optional live providers, session-isolated memory, governed shell execution, and a local web console.
 
 ## Runtime Flow
 
@@ -11,7 +11,7 @@ User goal
   -> structured decision parser
   -> approval policy
   -> deterministic security gate
-  -> repo tool registry / MCP server
+  -> repo, memory, and shell tool registry / MCP server
   -> explicit evaluation criteria
   -> deterministic loop eval / quality eval / final eval
   -> deterministic governance decision
@@ -23,8 +23,11 @@ The orchestrator owns budgets, validation, approvals, security gates, evaluation
 ## Boundaries
 
 - `src/orchestrator`: loop, decision parsing, approvals, evaluator, schemas.
-- `src/models`: provider-neutral adapter interface plus mock and provider stubs.
-- `src/tools`: local repo capabilities with workspace sandboxing.
+- `src/models`: provider-neutral adapter interface plus mock, OpenAI-compatible, and Anthropic adapters.
+- `src/tools`: local repo and shell capabilities with workspace sandboxing.
+- `src/memory`: session-isolated long-term memory store.
+- `src/config`: local config file schemas for providers, shell policy, and web settings.
+- `src/web`: local web console and JSON API.
 - `src/mcp`: stdio MCP server exposing the repo tools.
 - `src/storage`: SQLite event store.
 - `skills`: markdown procedures injected into model context.
@@ -50,7 +53,13 @@ Every model output must be a valid JSON decision:
 
 ## Persistence
 
-Task state is append-only. Each event is stored in SQLite as JSON payload with a task id, timestamp, and event type. Trace databases are isolated per session under a `sessions/<session-storage-name>/` directory. The default location is `.forloop/sessions/<session-storage-name>/state.sqlite`; explicit `traceDbPath` values choose the base directory and file name, then ForLoop still inserts the per-session directory. This makes runs inspectable and exportable without allowing separate Codex sessions to share one trace database.
+Task state is append-only. Each event is stored in SQLite as JSON payload with a task id, timestamp, and event type. Trace databases are isolated per session under a `sessions/<session-storage-name>/` directory. The default location is `.forloop/sessions/<session-storage-name>/state.sqlite`; explicit `traceDbPath` values choose the base directory and file name, then ForLoop still inserts the per-session directory. Long-term memory uses the same namespace at `.forloop/sessions/<session-storage-name>/memory.sqlite`, so separate Codex sessions cannot share trace or memory data unless they intentionally use the same stable session id.
+
+## Live Providers
+
+Provider configuration is explicit. OpenAI-compatible and Anthropic adapters require caller-supplied `modelId` values and either an inline API key for a transient UI session or `apiKeyEnv` for durable config. OpenAI-compatible endpoints can point at services such as OpenRouter, Ollama, vLLM, and LM Studio by changing `baseUrl`.
+
+Structured output support differs by backend, so ForLoop treats provider-side JSON schema or tool-use controls as a first pass only. Every response is normalized and validated again with the internal `AgentDecision` schema before the orchestrator can execute it.
 
 ## Eval Layer
 
@@ -111,10 +120,16 @@ security:
     - repo.run_tests
     - repo.run_typecheck
     - repo.git_diff
+    - memory.remember
+    - memory.search
+    - memory.list
+    - memory.delete
+    - shell.status
+    - shell.run
   requireApprovalForMutations: true
 ```
 
-The orchestrator emits `security_eval` before tool execution. Unknown tools and tools outside `allowedTools` are denied before execution. Workspace escapes and unconfigured command attempts are also surfaced as security evaluations from tool results. Standalone MCP servers can enforce the same allowed-tool policy with repeated `--allowed-tool <name>` flags.
+The orchestrator emits `security_eval` before tool execution. Unknown tools and tools outside `allowedTools` are denied before execution. Workspace escapes, disabled shell execution, shell allow-list failures, and unconfigured command attempts are also surfaced as security evaluations from tool results. Standalone MCP servers can enforce the same allowed-tool policy with repeated `--allowed-tool <name>` flags.
 
 ## Governance Layer
 

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .forloop/
+.omo/
+.playwright-mcp/
 coverage/
 *.tsbuildinfo
 examples/**/.forloop/

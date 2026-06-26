@@ -55,11 +55,22 @@ export class DeterministicSecurityGate {
 
     if (
       error.includes("Only the configured test command is allowed") ||
-      error.includes("Only the configured typecheck command is allowed")
+      error.includes("Only the configured typecheck command is allowed") ||
+      error.includes("Command is not allowed by shell policy") ||
+      error.includes("Shell tools are disabled by default")
     ) {
       return {
         action: "deny",
         boundary: "command",
+        reason: error,
+        metrics: { tool: result.tool }
+      };
+    }
+
+    if (error.includes("working directory escapes workspace")) {
+      return {
+        action: "deny",
+        boundary: "workspace",
         reason: error,
         metrics: { tool: result.tool }
       };

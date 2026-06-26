@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ToolCallAction, ToolResult } from "../orchestrator/schemas.js";
+import type { MemoryQuery, RememberMemoryInput, SessionMemoryStore } from "../memory/store.js";
 import { RepoTools } from "./repo.js";
+import { ShellTools, type ShellRunInput } from "./shell.js";
 
 export interface ToolDescription {
   name: string;
@@ -10,7 +12,14 @@ export interface ToolDescription {
 }
 
 export class RepoToolRegistry {
-  private readonly tools: ToolDescription[] = [
+  private readonly tools: ToolDescription[];
+
+  constructor(
+    private readonly repoTools: RepoTools,
+    private readonly memoryStore?: SessionMemoryStore,
+    private readonly shellTools?: ShellTools
+  ) {
+    this.tools = [
     {
       name: "repo.list_files",
       description: "List files inside the workspace, excluding build and dependency directories.",
@@ -60,10 +69,64 @@ export class RepoToolRegistry {
       description: "Return git diff for the workspace when it is a git repository.",
       inputSchema: z.object({}),
       mutates: false
+    },
+    {
+      name: "memory.remember",
+      description: "Store a long-term memory in the current session namespace.",
+      inputSchema: z.object({
+        content: z.string().min(1),
+        tags: z.array(z.string().min(1)).optional(),
+        source: z.string().min(1).optional(),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      }),
+      mutates: true
+    },
+    {
+      name: "memory.search",
+      description: "Search long-term memories in the current session namespace only.",
+      inputSchema: z.object({
+        query: z.string().optional(),
+        tag: z.string().optional(),
+        limit: z.number().int().positive().optional()
+      }),
+      mutates: false
+    },
+    {
+      name: "memory.list",
+      description: "List long-term memories in the current session namespace only.",
+      inputSchema: z.object({
+        tag: z.string().optional(),
+        limit: z.number().int().positive().optional()
+      }),
+      mutates: false
+    },
+    {
+      name: "memory.delete",
+      description: "Delete a long-term memory from the current session namespace.",
+      inputSchema: z.object({ id: z.string().min(1) }),
+      mutates: true
+    },
+    {
+      name: "shell.status",
+      description: "Inspect whether the current session allows shell execution.",
+      inputSchema: z.object({}),
+      mutates: false
+    },
+    {
+      name: "shell.run",
+      description: "Run a governed command in the workspace when shell tools are explicitly enabled.",
+      inputSchema: z.object({
+        command: z.string().min(1),
+        args: z.array(z.string()).optional(),
+        cwd: z.string().optional(),
+        mode: z.enum(["exec", "shell"]).optional(),
+        timeoutMs: z.number().int().positive().optional(),
+        env: z.record(z.string(), z.string()).optional()
+      }),
+      mutates: true
     }
   ];
-
-  constructor(private readonly repoTools: RepoTools) {}
+  }
 
   describe(): ToolDescription[] {
     return this.tools;
@@ -112,6 +175,23 @@ export class RepoToolRegistry {
           return await this.repoTools.runTypecheck(parsed.data as { command?: string });
         case "repo.git_diff":
           return await this.repoTools.gitDiff();
+        case "memory.remember":
+          return this.callMemory(action.tool, () =>
+            this.requireMemoryStore().remember(parsed.data as RememberMemoryInput)
+          );
+        case "memory.search":
+          return this.callMemory(action.tool, () => this.requireMemoryStore().search(parsed.data as MemoryQuery));
+        case "memory.list":
+          return this.callMemory(action.tool, () => this.requireMemoryStore().list(parsed.data as MemoryQuery));
+        case "memory.delete":
+          return this.callMemory(action.tool, () => {
+            const args = parsed.data as { id: string };
+            return { deleted: this.requireMemoryStore().delete(args.id) };
+          });
+        case "shell.status":
+          return { tool: action.tool, ok: true, output: this.requireShellTools().status() };
+        case "shell.run":
+          return await this.requireShellTools().run(parsed.data as ShellRunInput);
         default:
           return { tool: action.tool, ok: false, error: `Unhandled tool: ${action.tool}` };
       }
@@ -122,5 +202,23 @@ export class RepoToolRegistry {
         error: error instanceof Error ? error.message : String(error)
       };
     }
+  }
+
+  private callMemory(tool: string, run: () => unknown): ToolResult {
+    return { tool, ok: true, output: run() };
+  }
+
+  private requireMemoryStore(): SessionMemoryStore {
+    if (!this.memoryStore) {
+      throw new Error("Memory tools are not configured for this registry.");
+    }
+    return this.memoryStore;
+  }
+
+  private requireShellTools(): ShellTools {
+    if (!this.shellTools) {
+      throw new Error("Shell tools are not configured for this registry.");
+    }
+    return this.shellTools;
   }
 }

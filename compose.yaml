@@ -1,0 +1,10 @@
+services:
+  forloop-web:
+    build: .
+    command: ["web", "--host", "0.0.0.0", "--port", "4317", "--workspace", "/workspace", "--config", "/workspace/.forloop/config.yaml"]
+    ports:
+      - "4317:4317"
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env

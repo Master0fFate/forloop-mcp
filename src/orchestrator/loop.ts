@@ -1,24 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { parseAgentDecision } from "./decision.js";
-import { DeterministicEvaluator } from "./evaluator.js";
-import { DeterministicGovernance } from "./governance.js";
-import { DeterministicSecurityGate } from "./security.js";
-import { PolicyApprovalManager, type ApprovalManager } from "./approval.js";
 import { TaskInputSchema, type TaskInput, type TaskResult } from "./schemas.js";
 import { approximateTokens, createTraceContext, deterministicVerifierMetadata, errorMessage, summarizeEvents } from "./loop-helpers.js";
-import type { ModelAdapter, ModelResponse } from "../models/base.js";
-import { createModelAdapter } from "../models/router.js";
-import { defaultSkillsDir, SkillLoader, type LoadedSkill } from "../skills/loader.js";
+import type { ModelResponse } from "../models/base.js";
+import type { LoadedSkill } from "../skills/loader.js";
 import { SQLiteStateStore } from "../storage/sqlite.js";
-import { RepoTools } from "../tools/repo.js";
-import { RepoToolRegistry } from "../tools/registry.js";
+import { type RunAgentLoopOptions } from "./loop-options.js";
+import { createLoopRuntime } from "./loop-runtime.js";
 
-export interface RunAgentLoopOptions {
-  model?: ModelAdapter;
-  approvalManager?: ApprovalManager;
-  skillsDir?: string;
-  stateStore?: SQLiteStateStore;
-}
+export type { RunAgentLoopOptions } from "./loop-options.js";
 
 export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions = {}): Promise<TaskResult> {
   const task = TaskInputSchema.parse(input);
@@ -26,14 +16,9 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
   const { workspace, session, workspaceStatus, traceDbPath } = createTraceContext(task, taskId);
   const store = options.stateStore ?? (await SQLiteStateStore.open(traceDbPath));
   const shouldCloseStore = !options.stateStore;
-  const skillLoader = new SkillLoader(options.skillsDir ?? defaultSkillsDir(process.cwd()));
-  const model = options.model ?? createModelAdapter(task.model);
-  const approvalManager = options.approvalManager ?? new PolicyApprovalManager();
-  const repoTools = new RepoTools(workspace, task.testCommand, task.typecheckCommand);
-  const registry = new RepoToolRegistry(repoTools);
-  const evaluator = new DeterministicEvaluator();
-  const governance = new DeterministicGovernance();
-  const security = new DeterministicSecurityGate();
+  let runtime:
+    | Awaited<ReturnType<typeof createLoopRuntime>>
+    | undefined;
 
   try {
     store.append(taskId, "task_created", { task: { ...task, workspace, sessionId: session.id }, sessionStorageName: session.storageName, traceDbPath });
@@ -42,6 +27,9 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
       store.append(taskId, "task_failed", { reason: workspaceStatus.reason });
       return finish("failed");
     }
+
+    runtime = await createLoopRuntime(task, options, workspace, session);
+    const { approvalManager, evaluator, governance, model, registry, security, skillLoader } = runtime;
 
     let skill: LoadedSkill;
     try {
@@ -261,6 +249,7 @@ export async function runAgentLoop(input: unknown, options: RunAgentLoopOptions 
     store.append(taskId, "budget_exceeded", { maxIterations: task.budget.maxIterations });
     return finish("budget_exceeded");
   } finally {
+    runtime?.close();
     if (shouldCloseStore) {
       store.close();
     }

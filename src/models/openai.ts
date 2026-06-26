@@ -1,21 +1,33 @@
 import type { ModelAdapter, ModelRequest, ModelResponse } from "./base.js";
+import { OpenAICompatibleChatAdapter } from "./provider-config.js";
 
 export class OpenAIAdapter implements ModelAdapter {
   provider = "openai";
   model: string;
+  private readonly adapter: OpenAICompatibleChatAdapter;
 
-  constructor(model = "gpt-5-mini") {
+  constructor(model = process.env.FORLOOP_OPENAI_MODEL) {
+    if (!model) {
+      throw new Error("FORLOOP_OPENAI_MODEL is required to use the OpenAI adapter.");
+    }
     this.model = model;
+    this.adapter = new OpenAICompatibleChatAdapter({
+      kind: "openai-compatible",
+      baseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+      modelId: model,
+      apiKeyEnv: "OPENAI_API_KEY",
+      headers: {},
+      structuredOutput: "json_schema",
+      timeoutMs: 60000
+    });
   }
 
-  async generate(_request: ModelRequest): Promise<ModelResponse> {
+  async generate(request: ModelRequest): Promise<ModelResponse> {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is required to use the OpenAI adapter.");
     }
-
-    throw new Error(
-      "OpenAIAdapter is a provider boundary stub in this MVP. Wire the current OpenAI Responses API here without changing the orchestrator."
-    );
+    const response = await this.adapter.generate(request);
+    return { ...response, provider: this.provider };
   }
 
   supportsTools(): boolean {

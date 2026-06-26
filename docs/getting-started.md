@@ -99,6 +99,14 @@ Add `--typecheck-command "npm run typecheck"` when you want the MCP server to ex
 
 Add repeated `--allowed-tool <name>` flags when a wider loop should see only a smaller sanctioned action surface.
 
+Session memory tools are available as `memory.remember`, `memory.search`, `memory.list`, and `memory.delete`. They store data under `.forloop/sessions/<session-storage-name>/memory.sqlite`, using the same session identity rules as traces.
+
+Shell tools are available but disabled by default. Enable them only in trusted local sessions:
+
+```bash
+npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test" --allow-shell --shell-command node
+```
+
 This package is built for local stdio MCP hosts. Remote ChatGPT/OpenAI connector surfaces require remote HTTP MCP servers, so use an HTTP bridge or deploy a remote wrapper if you need that environment.
 
 If npm is unavailable or you want the latest `main` branch, install from GitHub:
@@ -182,6 +190,12 @@ Direct MCP file edits are denied by default. Enable them only for trusted client
 npm run mcp -- --workspace examples/buggy-auth-service --test-command "npm test" --allow-mutations
 ```
 
+Start the local web console:
+
+```bash
+npm run dev -- web --workspace examples/buggy-auth-service --port 4317
+```
+
 Inspect the trace:
 
 ```bash
@@ -202,4 +216,4 @@ Use explicit verifier commands:
 npm run dev -- run --workspace C:\path\to\repo --goal "Fix failing tests" --test-command "npm test" --typecheck-command "npm run typecheck"
 ```
 
-The runtime will not execute arbitrary shell commands. `repo.run_tests` and `repo.run_typecheck` are restricted to their configured commands.
+`repo.run_tests` and `repo.run_typecheck` are restricted to their configured commands. `shell.run` can execute broader commands only when shell policy explicitly enables it.

@@ -27,6 +27,14 @@
       "types": "./dist/src/models/mock.d.ts",
       "import": "./dist/src/models/mock.js"
     },
+    "./models/provider-config": {
+      "types": "./dist/src/models/provider-config.d.ts",
+      "import": "./dist/src/models/provider-config.js"
+    },
+    "./memory/store": {
+      "types": "./dist/src/memory/store.d.ts",
+      "import": "./dist/src/memory/store.js"
+    },
     "./orchestrator/loop": {
       "types": "./dist/src/orchestrator/loop.d.ts",
       "import": "./dist/src/orchestrator/loop.js"
@@ -34,6 +42,10 @@
     "./orchestrator/schemas": {
       "types": "./dist/src/orchestrator/schemas.d.ts",
       "import": "./dist/src/orchestrator/schemas.js"
+    },
+    "./web/server": {
+      "types": "./dist/src/web/server.d.ts",
+      "import": "./dist/src/web/server.js"
     }
   },
   "bin": {
@@ -54,6 +66,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^15.0.0",
+    "ky": "^2.0.2",
     "sql.js": "^1.14.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
